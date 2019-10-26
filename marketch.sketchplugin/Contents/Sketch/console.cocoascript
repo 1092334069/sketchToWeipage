@@ -1,0 +1,93 @@
+var console = (function(){
+  var persistent = [[NSThread mainThread] threadDictionary];
+  var console = persistent.console || '';
+
+  function logWindows(){
+    var window = persistentPanel('Console', 'LogWindow', function(window) {
+      var scrollview = [[NSScrollView alloc] initWithFrame:[[window contentView] frame]];
+      var contentSize = [scrollview contentSize];
+
+      [scrollview setBorderType:NSNoBorder];
+      [scrollview setHasVerticalScroller:true];
+      [scrollview setHasHorizontalScroller:true];
+      [scrollview setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+
+      var FLT_MAX = 3.40282347e+38;
+      var view = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, contentSize.width, contentSize.height)];
+      [view setMinSize:NSMakeSize(0.0, contentSize.height)];
+      [view setMaxSize:NSMakeSize(FLT_MAX, FLT_MAX)];
+      [view setVerticallyResizable:true];
+      [view setHorizontallyResizable:true];
+      [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+      //[[view textContainer] setContainerSize:NSMakeSize(FLT_MAX, FLT_MAX)];
+      [[view textContainer] setWidthTracksTextView:false];
+
+      [scrollview setDocumentView:view];
+      [window setContentView:scrollview];
+      [window makeFirstResponder:view];
+    });
+
+    return window;
+  }
+
+  function makePanel(title, autosave, setup) {
+    var frame = NSMakeRect(0,0,512,128);
+    var mask = NSTitledWindowMask + NSClosableWindowMask + NSMiniaturizableWindowMask + NSResizableWindowMask + NSUtilityWindowMask;
+    var window = [[NSPanel alloc] initWithContentRect:frame styleMask:mask backing:NSBackingStoreBuffered defer:true];
+    window.title = title;
+    window.floatingPanel = true;
+    [window setFrameAutosaveName:autosave];
+
+    setup(window);
+
+    [window setReleasedWhenClosed:false];
+    [window makeKeyAndOrderFront:nil];
+
+    return window;
+  }
+
+  function persistentPanel(title, persistName, setup) {
+    var window = persistent[persistName];
+    if (window == null) {
+      window = makePanel(title, persistName, setup);
+      persistent[persistName] = window;
+    }
+
+    return window;
+  }
+
+  return {
+    log: function(msg){
+      var logWindow = logWindows();
+      var time = new Date().toString().split(' ')[4];
+      var view = logWindow.contentView().documentView();
+
+      if(Object.prototype.toString.call(msg) == '[object Array]'){
+          msg = msg.join(', ');
+      }
+
+      if(Object.prototype.toString.call(msg) == '[object Object]'){
+          msg = JSON.stringify(msg);
+      }
+
+      console = console + msg + '\n';
+      logWindow.makeKeyAndOrderFront(nil);
+
+      log(msg);
+      view.setString(console);
+      //log(msg);
+      persistent.console = console;
+      view.scrollRangeToVisible(NSMakeRange(view.string.length, 0));
+      [[view textStorage] setFont:[NSFont fontWithName:@'Consolas' size:11]];
+    },
+    clear: function(){
+      var logWindow = logWindows();
+      var view = logWindow.contentView().documentView();
+
+      logWindow.makeKeyAndOrderFront(nil);
+
+      console = '';
+      view.setString('');
+    }
+  }
+})();

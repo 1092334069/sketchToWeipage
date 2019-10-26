@@ -1,0 +1,137 @@
+@import 'util.cocoascript';
+
+var allArtboards = NSMutableArray.array()
+
+//升级检测
+function onRun(context){
+  var ctx = context;
+  var doc = context.document;
+  var I18N = util.I18N;
+  //插件路径
+  var pluginPath = [NSString stringWithFormat:@'%@', ctx.scriptPath.replace(/\/(\w*)\.cocoascript$/, '//')];
+  //从manifest.json中获取版本号
+  var manifestContent = [NSData dataWithContentsOfFile: [NSString stringWithFormat:@'%@manifest.json', pluginPath]];
+  var manifest = [NSJSONSerialization JSONObjectWithData:manifestContent options:nil error:nil];
+  //插件当前版本号
+  var currentVersion = null;
+  //插件当前版本号
+  var response = util.getJSON('https://raw.githubusercontent.com/tudou527/marketch/master/package.json');
+  //服务端新版本号
+  var remoteVersion = null;
+
+  if(response && response.version){
+    //插件当前版本号
+    currentVersion = util.convertVersion(manifest.version);
+    //服务端新版本号
+    remoteVersion = util.convertVersion(response.version);
+
+    if (remoteVersion > currentVersion){
+      util.showTips({content: I18N.NEWVERSION.replace('{newversion}', response.version)});
+    }else{
+      util.showTips({content: ''+ manifest.version +' '+ I18N.LAETVERSION});
+    }
+  }else{
+    util.showTips({content: I18N.NETERROR});
+  }
+
+  console.clear()
+  var layerList = find({key: "(class != NULL) && (class == %@)", match: MSArtboardGroup}, context.selection, true, context)
+  for (var i = 0; i < context.selection.count(); i++) {
+    allArtboardInsert(layerList[i])
+    var layerList = getArtboardData(layerList[i])
+  }
+}
+
+function getArtboardData(artboard) {
+  var layerList = []
+  var theLayer = null;
+  var artboardZIndex = 0;
+  var loopLayer = artboard.children().objectEnumerator();
+  var artboardData = util.getLayerData(artboard, {type: 'artboard', zIndex: this.artboardZIndex});
+  var layerType = ''
+  while(theLayer = loopLayer.nextObject()){
+    var layerType = util.toJSString(theLayer.class())
+    switch(layerType){
+          case 'MSTextLayer':
+            layerType = 'text';
+            break;
+          case 'MSSliceLayer':
+            layerType = 'slice';
+            break;
+          case 'MSBitmapLayer':
+            layerType = 'bitmap';
+            break;
+          case 'MSShapeGroup':
+            //保存形状数据
+            layerType = 'shape';
+            break;
+          case 'MSSymbolInstance':
+            layerType = 'symbol';
+            break;
+          // default: console.log(layerType)
+        }
+    
+    var artboardLayer = util.getLayerData(theLayer, {type: layerType, zIndex: artboardZIndex}, theLayer, artboard);
+    if (artboardLayer) {
+      layerList.push(artboardLayer)
+    }
+    artboardZIndex ++
+  }
+  return layerList
+}
+
+function allArtboardInsert(artboard) {
+  var noHasText = true
+  var childs = artboard.children().objectEnumerator()
+  while(child = childs.nextObject()) {
+    var layerType = util.toJSString(child.class())
+    if (layerType === 'MSTextLayer') {
+      noHasText = false
+    }
+  }
+  allArtboards.addObject(artboard)
+}
+
+function is(layer, theClass){
+  if(!layer) return false;
+  var klass = layer.class();
+  return klass === theClass;
+}
+
+function find(format, container, returnArray, context){
+  var page = context.document.currentPage();
+  var artboard = page.currentArtboard()
+  var current = artboard || page;
+
+  if(!format || !format.key  || !format.match){
+    return false;
+  }
+  var predicate = NSPredicate.predicateWithFormat(format.key,format.match),
+  container = container || current,
+  items;
+
+  if(container.pages){
+    items = container.pages();
+  }
+  else if( is( container, MSSharedStyleContainer ) || is( container, MSSharedTextStyleContainer ) ){
+    items = container.objectsSortedByName();
+  }
+  else if( container.children ){
+    items = container.children();
+  }
+  else{
+    items = container;
+  }
+
+  var queryResult = items.filteredArrayUsingPredicate(predicate);
+
+  if(returnArray) return queryResult;
+
+  if (queryResult.count() == 1){
+    return queryResult[0];
+  } else if (queryResult.count() > 0){
+    return queryResult;
+  } else {
+    return false;
+  }
+}
