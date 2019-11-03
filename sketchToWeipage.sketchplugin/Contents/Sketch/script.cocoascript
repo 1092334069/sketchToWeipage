@@ -1,0 +1,1869 @@
+var onRun = function(context) {
+    var util = {
+      //获取文字图层字体样式
+      getFontWeight: function(layer){
+        var app = NSApplication.sharedApplication();
+        var appVersion = parseFloat(app.applicationVersion(), 10);
+
+        if(appVersion <= 3.3){
+          var layerFont = layer.font();
+          var fontManager = [NSFontManager sharedFontManager];
+          var weight = fontManager.weightOfFont(layerFont);
+          return weight > 7 ? '700': null;
+        }else{
+          return null
+        }
+      },
+
+      //字体对齐方式
+      getTextAlign: function(layer){
+        var align = ['left','right','center','justify'];
+        return align[layer.textAlignment()] ? align[layer.textAlignment()] : null;
+      },
+
+      //转换版本号
+      convertVersion: function(version){
+        return parseFloat(version.match(/\d/gi).join(''), 10);
+      },
+
+      /*
+       * 消息提示
+       * obj.title
+       * obj.content
+       */
+      showTips: function(obj){
+        var title = obj.title || 'Marketch';
+        var app = [NSApplication sharedApplication];
+
+        [app displayDialog:obj.content withTitle:title];
+      },
+
+      //从网络同步加载json数据
+      getJSON: function(url){
+        var url = [NSURL URLWithString:url];
+        var request = [NSMutableURLRequest requestWithURL:url];
+        var response = [NSURLConnection sendSynchronousRequest:request returningResponse:nil error:nil];
+        var result = [NSJSONSerialization JSONObjectWithData:response options:nil error:nil];
+        return result;
+      },
+
+      I18N: (function(){
+        var language = [[[NSUserDefaults standardUserDefaults] objectForKey:@'AppleLanguages'] objectAtIndex:0];
+        //多语言配置
+        var I18N = {
+          'zh-cn': {
+            'language': 'cn',
+            'EXPORT': '导出',
+            'EXPORTTO': '导出到：',
+            'EXPORTING': '正在导出，请稍候...',
+            'NOARTBOARD': '没有选择任何画板',
+            'EXPORTSUCCESS': '打包导出成功',
+            'EXPORTFAIL': '打包导出失败',
+            'NEWVERSION': '发现版本（{newversion}），从Toolbox中删除后重新安装可以获取新版本',
+            'LAETVERSION': '已经是最新版本了',
+            'NETERROR': '无法访问更新服务器，请稍后再试',
+            'SELECTEXPORTARTBOARD': '请选择要导出的画板',
+            'SELECTEDARTBOARD': '当前选中的画板',
+            'ARTBOARDONPAGE': '当前页面上的全部画板',
+            'ALLARTBOARD': '所有画板(会比较慢)',
+            'SCALEARTBOARD': '画板导出2倍大小',
+            'EXPORTEVERYLAYER': '把每个图层作为图片导出',
+            'SAVESKETCHSOURCE': '保存sketch源文件',
+            'CONFIRM': '确认',
+            'CANCEl': '取消',
+            //预览页面多语言
+            'MarketchPreview': {
+              'UNIT': '单位',
+              'SIZE': '尺寸',
+              'SHOWSLICE': '显示切片',
+              'DRAGTOSAVE': '右键或拖拽到桌面保存',
+              'WIDTH': '宽',
+              'HEIGHT': '高',
+              'BORDER': '边框',
+              'COLOR': '颜色',
+              'FILLCOLOR': '填充色',
+              'RADIUS': '圆角',
+              'LAYERTEXT': '图层内容',
+              'FONTSIZE': '字号',
+              'CODE': '代码',
+              'EXPORT': '导出',
+              'FORMAT': '格式',
+              'EXPORTLAYER': '导出选中图层',
+              'COPYSUCCESS': '复制成功',
+              'TEXTSHAREDSTYLE': '文字样式',
+              'SHAPESHAREDSTYLE': '图层样式'
+            }
+          },
+          'en': {
+            'language': 'en',
+            'EXPORT': 'Export',
+            'EXPORTTO': 'Export to',
+            'NOARTBOARD': 'No artboards found.',
+            'EXPORTING': 'Exporting...',
+            'EXPORTSUCCESS': 'Successfully Exported.',
+            'EXPORTFAIL': 'Failed to Export.',
+            'NEWVERSION': 'Marketch has a newer version({newversion}). Please reinstall from Sketch Toolbox.',
+            'LAETVERSION': 'is currently the newest version available.',
+            'NETERROR': 'Service is not available.',
+            'SELECTEXPORTARTBOARD': 'Which artboard would you like to export?',
+            'SELECTEDARTBOARD': 'Selected Artboard(s)',
+            'ARTBOARDONPAGE': 'Artboards on Current Page',
+            'ALLARTBOARD': 'All Artboards',
+            'SCALEARTBOARD': 'Scale all Artboards as 2x',
+            'EXPORTEVERYLAYER': 'Export all layers as image',
+            'SAVESKETCHSOURCE': 'Save Sketch file',
+            'CONFIRM': 'Confirm',
+            'CANCEl': 'Cancel',
+            //预览页面多语言
+            'MarketchPreview': {
+              'UNIT': 'Unit',
+              'SIZE': 'Size',
+              'SHOWSLICE': 'Show slices',
+              'DRAGTOSAVE': 'Drag to desktop to save.',
+              'WIDTH': 'Width',
+              'HEIGHT': 'Height',
+              'BORDER': 'Border',
+              'COLOR': 'Color',
+              'FILLCOLOR': 'Fill',
+              'RADIUS': 'Radius',
+              'LAYERTEXT': 'Content',
+              'FONTSIZE': 'Font Size',
+              'CODE': 'Code',
+              'EXPORT': 'Export',
+              'FORMAT': 'Format',
+              'EXPORTLAYER': 'Export Activity Layer',
+              'COPYSUCCESS': 'Copy Success',
+              'TEXTSHAREDSTYLE': 'Text Styles',
+              'SHAPESHAREDSTYLE': 'Layer Styles'
+            }
+          }
+        }
+        //获取到语言后重新设置I18N变量，以简化操作
+        if(new String(language).toString() !== 'zh-Hans'){
+          return I18N['en'];
+        }else{
+          return I18N['zh-cn'];
+        }
+      })(),
+
+      /**
+       * 查看OC对象成员
+       * @param layer {object} 图层对象
+       * @param type {string} 查看类型。可选值：
+       *      class: 查看图层继承链
+       *      method: 查看图层类方法&&实例方法
+       *      property: 查看图层属性
+       *      protoco: 查看图层协议;
+       * @return Array
+       */
+      getMembersOfOC: function(layer, type){
+        var result = NSMutableArray.array();
+        var desc = [[MOClassDescription alloc] initWithClass:[layer class] registered:nil];
+
+        switch(type){
+          default:
+          case 'class':
+            //继承链
+            result.addObjectsFromArray(desc.ancestors());
+            break;
+          case 'method':
+            //类方法（classMethodsWithAncestors）
+            result.addObjectsFromArray(desc.classMethodsWithAncestors());
+            //实例方法（instanceMethodsWithAncestors）
+            result.addObjectsFromArray(desc.instanceMethodsWithAncestors());
+            break;
+          case 'property':
+            //属性（propertiesWithAncestors）
+            result.addObjectsFromArray(desc.properties());
+            break;
+          case 'protoco':
+            //协议（protocolsWithAncestors）
+            result.addObjectsFromArray(desc.protocols());
+            break;
+        }
+        return result;
+      },
+
+      /*
+       * NSString to js string
+       * @param {NSString} NSStr 待转换的字符串
+       * @param {boolean} config.encode 是否编码字符串
+       * @param {boolean} config.escapeLine 是否转义字符串中的第一个“-”
+       */
+      toJSString: function(NSStr){
+        var config = arguments.length > 1 ? arguments[1] : null;
+        var str = new String(NSStr).toString();
+
+        if(config && config.escapeLine){
+          str = str.replace(/\\-/g, '-');
+        }
+
+        if(config && config.encode){
+          str = encodeURIComponent(str);
+        }
+        return str;
+      },
+
+      //打包文件
+      zipFile: function(zipFile, destination){
+        var zipTask = [[NSTask alloc] init];
+
+        [zipTask setLaunchPath:@'/usr/bin/ditto'];
+        //zip参数
+        [zipTask setArguments:[NSArray arrayWithArray:['-c', '-k', '-X', '--rsrc', zipFile, destination]]];
+
+        [zipTask launch];
+        [zipTask waitUntilExit];
+
+        if ([zipTask terminationStatus] != 0){
+          //task执行失败
+          return false;
+        }else{
+          //task执行成功
+          return true;
+        }
+      },
+
+      //根据objectId获取shared style名称
+      getSharedStyleFromID: function(id, type) {
+        var sharedStyleObjects = NSArray.alloc();
+        if(type == 'text'){
+          sharedStyleObjects = doc.documentData().layerTextStyles().objects();
+        }
+        if(type == 'shape'){
+          sharedStyleObjects = doc.documentData().layerStyles().objects();
+        }
+        for (var i = 0; i < sharedStyleObjects.count(); i++) {
+          var sharedStyle = sharedStyleObjects.objectAtIndex(i);
+          if(sharedStyle.objectID() == id){
+            return sharedStyle;
+          }
+        }
+        return null;
+      },
+
+      /**
+       * 获取图层数据
+       * @param layer 目标图层
+       * @param config.type 图层类型
+       * @param config.zIndex
+       * @return object
+       */
+      getLayerData: function(layer, config, theLayer, artboard){
+        //图层在画板中的位置、尺寸：frameInArtboard
+        //Sketch 41 Fix: frameInArtboard() = > frame()
+        var layerFrame = layer.frame();
+        var layerId = util.toJSString(layer.objectID());
+        var nameConfig = (config.type == 'artboard') ? {encode: true, escapeLine:true} : {encode: true};
+
+        //图层基本信息
+        var layerData = {
+          'id': layerId,
+          src: layerId,
+          name: util.toJSString(layer.name(), nameConfig),
+          type: util.toJSString(layer.className()),
+          x: Math.ceil(layer.absoluteRect().x()),
+          y: Math.ceil(layer.absoluteRect().y()),
+          zIndex: config.zIndex,
+          width: Math.ceil(layerFrame.width()),
+          height: Math.ceil(layerFrame.height()),
+          sharedStyleType: '',
+          sharedStyle: '',
+          notes: []
+        }
+
+        //修正边框对图形、位图的位置影响
+        if(config.type == 'shape' || config.type == 'bitmap'){
+          var border = layer.style().borders().firstObject();
+          var borderWidth = null;
+
+          if(border && border.isEnabled()){
+            borderWidth = border.thickness();
+            layerData.borderWidth = borderWidth;
+            //边框位置为center
+            if(border.position() == 0){
+              //补偿坐标
+              layerData.x = layerData.x - parseInt(borderWidth/2, 10);
+              layerData.y = layerData.y - parseInt(borderWidth/2, 10);
+              //补偿尺寸
+              layerData.width = layerData.width - (borderWidth);
+              layerData.height = layerData.height - (borderWidth);
+            }
+            //边框位置为Inside
+            if(border.position() == 1){
+              //补偿尺寸
+              layerData.width = layerData.width - (borderWidth * 2);
+              layerData.height = layerData.height - (borderWidth * 2);
+            }
+            //边框位置为Outside
+            if(border.position() == 2){
+              //补偿坐标
+              layerData.x = layerData.x - parseInt(borderWidth, 10);
+              layerData.y = layerData.y - parseInt(borderWidth, 10);
+            }
+          }
+        }
+        //对于画板、slice、位图只需要返回基本数据
+        if(config.type == 'artboard' || config.type == 'slice' || config.type == 'bitmap' || config.type == 'symbol'){
+          if(config.type == 'artboard' && layer.className() == 'MSSymbolMaster'){
+            // 画板为Symbol时设置SymbolId
+            layerData.symbolId = util.toJSString(layer.symbolID());
+          }
+
+          if(config.type == 'symbol'){
+            layerData.symbolId = util.toJSString(layer.symbolID());
+          }
+
+          return layerData;
+        }
+
+        //文字图层
+        if(config.type == 'text'){
+          var textAlign = util.getTextAlign(layer);
+          var fontWeight = util.getFontWeight(layer);
+          var fontStyle = layer.style();
+          var sharedObjectId = null;
+
+          //文字内容
+          layerData.html = util.toJSString(layer.stringValue(), {encode: true});
+          layerData.style = util.filterSketchCss(layer.CSSAttributes());
+
+          //修正文字图层设置填充后颜色不正确的问题
+          if(fontStyle.hasEnabledFill()){
+            var fillColor = layer.style().fills()[0].CSSAttributeString().split(':');
+            if(fillColor.length > 1){
+              layerData.style.color = util.trim(fillColor[1]);
+            }
+          }
+
+          /**
+           * 修正单行文字图层高度
+           * 行高未设置，并且高度与字号相差2px以上时候重新设置高度
+           *
+          if(!/[\r\n]/gi.test(layer.stringValue()) && layerData.style['line-height'] === undefined){
+            var fontSize = parseInt(layerData.style['font-size'], 10);
+            if(layerData.height - fontSize > 2){
+              layerData.height = fontSize + 2;
+            }
+          }*/
+
+          if(textAlign){
+            layerData.style['text-align'] = textAlign;
+          }
+          if(fontWeight){
+            layerData.style['font-weight'] = fontWeight;
+          }
+
+          if(sharedObjectId != null){
+            sharedStyle = util.getSharedStyleFromID(sharedObjectId, 'text');
+            if(sharedStyle){
+              layerData.sharedStyleType = 'TEXTSHAREDSTYLE';
+              layerData.sharedStyle = util.toJSString(sharedStyle.name());
+            }
+          }
+          return layerData;
+        }
+
+        //图形(layer.layers().firstObject()判断是否为空图形)
+        if(config.type == 'shape' && layer.layers().firstObject() != null){
+          var shapeClassName = layer.layers().firstObject().className();
+          var sharedObjectId = null;
+          layerData.style = util.filterSketchCss(layer.CSSAttributes());
+
+          layerData.style.width = layerData.width +'px';
+          layerData.style.height = layerData.height +'px';
+
+          //从css中复制一份圆角（给设计师看）
+          if(layerData.style['border-radius']){
+            layerData.radius = layerData.style['border-radius'];
+            if(layerData.radius.split('px').length > 2){
+              layerData.radius = layerData.radius.replace(/px\s?/gi, '/');
+            }else{
+              layerData.radius = layerData.radius.replace('px', '');
+            }
+          }
+
+          //从css中复制一份背景色（给设计师看）
+          if(layerData.style['background']){
+            layerData.background = layerData.style['background'];
+          }
+
+          //正圆形（长宽误差2px以内）补充borderRadius属性
+          if(shapeClassName == 'MSOvalShape' && Math.abs(layerData.width - layerData.height) <= 2){
+            layerData.style['border-radius'] = '100%';
+          }
+
+          if(sharedObjectId != null){
+            sharedStyle = util.getSharedStyleFromID(sharedObjectId, 'shape');
+            if(sharedStyle){
+              layerData.sharedStyleType = 'SHAPESHAREDSTYLE';
+              layerData.sharedStyle = util.toJSString(sharedStyle.name());
+            }
+          }
+          return layerData;
+        }
+
+        return null;
+      },
+
+      trim: function(str){
+        return str.replace(/(^\s+|\s+$)/g, '');
+      },
+
+      //处理系统生成的css，返回js object
+      filterSketchCss: function(cssAttrs){
+        var style = {};
+        for(var i=0,len=cssAttrs.count();i<len;i++){
+          var cssAttr = util.toJSString(cssAttrs.objectAtIndex(i));
+          if(!cssAttr.match(/\/\*[^\*]*?\*\/$/g)){
+            cssAttr = cssAttr.split(':');
+            var attrKey = util.trim(cssAttr[0]);
+            var attrValue = util.trim(cssAttr[1].replace(';', ''));
+            //过滤掉无效的边框参数
+            if(attrKey === 'border' && /^0px/i.test(attrValue)){
+              continue;
+            }
+            //除了字体外，都转换为小写
+            if(attrKey != 'font-family'){
+              attrValue = attrValue.toLowerCase();
+            }
+            style[attrKey] = attrValue;
+          }
+        }
+        return style;
+      }
+    }
+
+
+    //上下文
+    var ctx = null;
+    //文档对象
+    var doc = null;
+    //多语言
+    var I18N = util.I18N;
+
+    var Marketch = function(){
+      //图层zindex属性（新画板始终从1开始）
+      this.zIndex = 1;
+      //需要处理的所有画板
+      this.allArtboards = NSMutableArray.array();
+      //当前画板索引
+      this.index = 0;
+      //总画板数
+      this.maxIndex = 0;
+      //是否已打点
+      this.hasLog = false;
+      //队列（用于处理图层）
+      this.queue = {
+        //当前正在遍历的队列
+        current: [],
+        //遍历过程中新产生的group
+        next: []
+      }
+      //插件目录
+      this.pluginPath = [NSString stringWithFormat:@'%@', context.scriptPath.replace(/\/(\w*)\.cocoascript$/, '')];
+      //导出路径
+      this.exportPath = '';
+      //文件路径
+      this.tmpPath = {};
+      //当前sketch文件内所有画板图层数据
+      this.sketchData = {
+        //是否导出每个子图层
+        exportEveryLayer: false,
+        //sketch文件名
+        sketchName: '',
+        language: I18N.language,
+        //页面多语言
+        I18N: I18N['MarketchPreview'],
+        //页面id（为了保证页面显示顺序）
+        pageOrder: [],
+        //页面数据
+        pageData: {
+        },
+        //画板数据
+        artboard: {},
+        layerList: []
+      };
+      //保存被合并小图输出的图层父节点id
+      this.groupExportLayers = [];
+      //当前蒙版图层id
+      this.currentMaskLayerId = null;
+      //当前蒙版父图层id（用于向上遍历判断图层是否在蒙版内部）
+      this.currentMaskParentLayerId = null;
+      //当前处理的画板zindex
+      this.artboardZIndex = 0;
+    }
+
+    Marketch.prototype = {
+      /**
+       * @param expConfig.layer {boolean} 是否导出图层为图片
+       * @param expConfig.artboard {string} 导出画板选项: selected|page|all
+       * @param expConfig.saveSource {boolean} 是否保存sketch源文件
+       * @return
+       */
+      run: function(expConfig){
+        ctx = expConfig.ctx
+        doc = expConfig.doc
+
+        this.sketchData.layerList = expConfig.pageData.layers
+
+
+
+        var basePath = '';
+        var loopVar = null
+        var loopObj = null;
+
+        this.expConfig = expConfig;
+
+        //初始化临时目录路径
+        this.initTmpPath();
+        //临时文件跟目录
+        basePath = this.tmpPath.basePath;
+        //预览需要根据是否导出图层为图片选项决定是否显示导出按钮
+        this.sketchData.exportEveryLayer = expConfig.layer;
+
+        //从所有画板中过滤出symbol
+        loopObj = doc.pages().objectEnumerator();
+        while(loopVar = loopObj.nextObject()){
+          var artloops = loopVar.artboards().objectEnumerator();
+          while(artboard = artloops.nextObject()){
+            // 不导出前缀为 - 且不为 symbol 的图层
+            if(artboard.className() == 'MSSymbolMaster'){
+              this.allArtboardInsert(artboard);
+            }
+          }
+        }
+
+        loopObj = doc.pages().objectEnumerator();
+
+        while(loopVar = loopObj.nextObject()){
+          // 不导出以“-”开头的页面
+          if(!/^-{1}[^-]*?.*$/.test(loopVar.name())){
+            var artloops = loopVar.artboards().objectEnumerator();
+            while(artboard = artloops.nextObject()){
+              if(artboard.className() == 'MSArtboardGroup' && !/^-{1}[^-]*?.*$/.test(artboard.name())){
+                this.allArtboardInsert(artboard);
+              }
+            }
+          }
+        }
+
+        //画板不存在
+        if(this.allArtboards.count() == 0){
+          util.showTips({content:I18N.NOARTBOARD});
+          return false;
+        }
+
+        //复制当前sketch文件到临时文件目录
+        expConfig.saveSource && this.copySkethFile();
+
+        //处理画板
+        this.collectArtboard();
+
+        return this;
+      },
+
+      allArtboardInsert: function(artboard) {
+        var noHasText = true
+        var childs = artboard.children().objectEnumerator()
+        while(child = childs.nextObject()) {
+          var layerType = util.toJSString(child.class())
+          if (layerType === 'MSTextLayer') {
+              noHasText = false
+          }
+        }
+        this.allArtboards.addObject(artboard)
+      },
+
+      //初始化临时目录路径
+      initTmpPath: function(){
+        //临时目录
+        var tmpPath = NSTemporaryDirectory();
+        var basePath = [tmpPath stringByAppendingPathComponent: @'com.sketch.cosa'];
+        var tmpFolder = new Date().getTime().toString();
+        var artboardFolder = [NSString stringWithFormat: @'%@/%@', basePath, tmpFolder];
+        var imagePath = '';
+        var dataPath = '';
+
+        //删除主目录（如果存在）
+        var result = [[NSFileManager alloc] removeItemAtPath:basePath error:nil];
+        //重新创建主目录
+        [[NSFileManager alloc] createDirectoryAtPath:basePath withIntermediateDirectories:nil attributes:nil error:nil];
+        //重新创建画板文件夹
+        [[NSFileManager alloc] createDirectoryAtPath:artboardFolder withIntermediateDirectories:nil attributes:nil error:nil];
+        //数据文件路径
+        // dataPath = [artboardFolder stringByAppendingPathComponent: @'data.js'];
+        dataPath = [artboardFolder stringByAppendingPathComponent: @'data.json'];
+        //html文件路径
+        htmlPath = [artboardFolder stringByAppendingPathComponent: @'index.html'];
+
+        this.tmpPath.zipPath = basePath;
+        //基础路径
+        this.tmpPath.basePath = artboardFolder;
+        //数据文件路径
+        this.tmpPath.dataPath = dataPath;
+        //html文件路径
+        this.tmpPath.htmlPath = htmlPath;
+      },
+
+      //复制当前sketch文件
+      copySkethFile: function(){
+        var basePath = this.tmpPath.basePath;
+        var sketchName = util.toJSString(doc.displayName());
+        //sketch源文件在临时目录中的保存路径
+        var savePath = '';
+        //sketch源文件所在路径
+        var sketchFilePath = doc.fileURL();
+
+
+        if(!(/\.sketch$/.test(sketchName))){
+          sketchName += '.sketch';
+        }
+
+        savePath = basePath +'/'+ sketchName;
+
+        //如果sketch文件没有保存sketchFilePath会返回null就不需要复制sketch源文件了
+        if(sketchFilePath){
+          this.sketchData.sketchName = sketchName;
+          sketchFilePath = sketchFilePath.path();
+          [[NSFileManager defaultManager] copyPath:sketchFilePath toPath:savePath handler:nil];
+        }
+      },
+
+      //迭代处理画板
+      collectArtboard: function(){
+        //sketch所有文件数据
+        var sketchData = this.sketchData;
+        //当前页面Id
+        var activePageId = util.toJSString(doc.currentPage().objectID());
+        var theArtboard;
+        var loopArtboard = this.allArtboards.objectEnumerator();
+
+        //遍历所有画板
+        while(theArtboard = loopArtboard.nextObject()) {
+          //画板数据
+          var artboardData = {};
+          //画板id
+          var artboardId = util.toJSString(theArtboard.objectID());
+          //画板所在页面
+          var theArtPage = theArtboard.parentGroup();
+          //待处理的画板所在页面id
+          var theArtPageId = util.toJSString(theArtPage.objectID());
+          //画板目录
+          var artboardPath = NSString.stringWithFormat(@'%@/%@', this.tmpPath.basePath, artboardId);
+          //画板中的切片保存路径
+          var artboardSlicePath = artboardPath.stringByAppendingPathComponent('slice');
+
+          //待处理的画板所在页面不是当前页时激活画板所在的页面
+          if(activePageId != theArtPageId){
+            activePageId = theArtPageId;
+            doc.setCurrentPage(theArtboard.parentGroup());
+          }
+
+          //页面信息
+          if(!sketchData.pageData[theArtPageId]){
+            //不管用户如何选择都要导出页面数据
+            sketchData.pageData[theArtPageId] = {
+              //页面唯一id
+              pageId: theArtPageId,
+              //页面名
+              name: util.toJSString(theArtPage.name(), {encode: true, escapeLine:true}),
+              //页面下画板id列表（保证显示的顺序）
+              artboardId: []
+            }
+            //保存画板顺序
+            sketchData.pageOrder.push(theArtPageId);
+          }
+
+          //保存画板id
+          sketchData.pageData[theArtPageId].artboardId.push(artboardId);
+
+          //新建画板文件夹
+          [[NSFileManager defaultManager] createDirectoryAtPath:artboardPath withIntermediateDirectories:nil attributes:nil error:nil];
+          //在画板目录中创建slice图层文件夹
+          [[NSFileManager alloc] createDirectoryAtPath:artboardSlicePath withIntermediateDirectories:nil attributes:nil error:nil];
+          //导出画板
+          this.exportLayerAsImage(theArtboard, {name: 'artboard', path: artboardPath});
+
+          //重置zindex
+          this.artboardZIndex = 0;
+
+          //处理画板&&图层数据
+          sketchData.artboard[artboardId] = this.getArtboardData({
+            artboard: theArtboard,
+            artboardPath: artboardPath
+          });
+        }
+
+        //TODO 处理蒙版
+        this.saveDataJsonFile();
+      },
+
+      /**
+       * 处理画板&&图层数据
+       * @param obj.artboard 画板
+       * @return obj.artboardPath 画板保存路径
+       */
+      getArtboardData: function(obj){
+        var artboard = obj.artboard;
+        var exportLayerAsImage = this.sketchData.exportEveryLayer;
+        var theLayer = null;
+        //画板下的图层迭代器
+        var loopLayer = artboard.children().objectEnumerator();
+        //获取画板数据
+        var artboardData = util.getLayerData(artboard, {type: 'artboard', zIndex: this.artboardZIndex});
+        //导出选项
+        var exportConfig = {
+          //导出文件名（不包含扩展名）
+          name: '',
+          //导出路径
+          path: obj.artboardPath
+        }
+
+        //画板下的切片
+        artboardData.slice = [];
+        //画板下的图层
+        artboardData.layer = [];
+        //画板下的蒙版
+        artboardData.mask = {};
+
+        while(theLayer = loopLayer.nextObject()){
+          var layerSize = theLayer.frame().size;//Sketch 41 Fix: frameInArtboard() = > frame()
+          var layerId = util.toJSString(theLayer.objectID());
+          //图层父节点id
+          var parentGroupId = util.toJSString(theLayer.parentGroup().objectID());
+          var layerName = util.toJSString(theLayer.name());
+          var layerType = util.toJSString(theLayer.class());
+          var layerData = [];
+
+          var layerStates = this.isLayerEnable(theLayer);
+
+          exportConfig.name = layerId;
+
+          //图层不可见
+          if(!layerStates.isVisible){continue;}
+          //图层所在的组已经被作为图片导出过了
+          if(layerStates.hasExportByGroup){continue;}
+
+          if(layerStates.isMaskChildLayer && this.currentMaskLayerId){
+            artboardData.mask[this.currentMaskLayerId].push(layerId);
+          }else{
+            //清空当前mask标记
+            this.currentMaskLayerId = null;
+            this.currentMaskParentLayerId = null;
+          }
+
+          /*
+           * children方法会扁平化画板下的所有图层（没有层级关系）
+           * 如果某个图层为蒙版图层，则同一个文件夹内，其后出现的图层全部为该蒙版内的子图层
+           * 遍历到下一个图层后，需要逐级判断父图层是否与最近一次出现的蒙版图层（如有）有共同的“祖先”
+           * 存在共同的祖先，在导出图层为图片时始终只导出当前图层与蒙版图层的交集部分。
+           * 不存在共同的祖先时，则认为最近一次出现的蒙版作用范围失效，并清空最近一次出现的蒙版图层对象。
+           */
+          //某个图层为蒙版时，记录当前蒙版信息
+          if(theLayer.hasClippingMask()){
+            //保存当前蒙版图层信息
+            this.currentMaskLayerId = layerId;
+            this.currentMaskParentLayerId = parentGroupId;
+            //保存画板内蒙版数据
+            artboardData.mask[layerId] = [];
+          }
+
+          //小于64*64并且当前图层父节点区域内不包含文字图层时作为图片导出
+          if(this.groupExportEnable(theLayer)){
+            this.groupExportLayers.push(parentGroupId);
+            //保存图层数据
+            layerData = util.getLayerData(theLayer.parentGroup(), {type: 'bitmap', zIndex: this.artboardZIndex}, theLayer, artboard);
+            artboardData.layer.push(layerData);
+
+            //导出父图层
+            exportConfig.name = util.toJSString(theLayer.parentGroup().objectID());
+            exportLayerAsImage && this.exportLayerAsImage(theLayer.parentGroup(), exportConfig);
+          }else{
+            switch(layerType){
+              case 'MSTextLayer':
+                //保存文字图层数据
+                layerData = util.getLayerData(theLayer, {type: 'text', zIndex: this.artboardZIndex}, theLayer, artboard);
+                layerData && artboardData.layer.push(layerData);
+                break;
+
+              case 'MSSliceLayer':
+                //保存切片图层数据
+                layerData = util.getLayerData(theLayer, {type: 'slice', zIndex: this.artboardZIndex}, theLayer, artboard);
+                layerData && artboardData.slice.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, {
+                  name: layerName,
+                  path: obj.artboardPath +'/slice'
+                });
+                break;
+
+              case 'MSBitmapLayer':
+                //保存位图数据
+                layerData = util.getLayerData(theLayer, {type: 'bitmap', zIndex: this.artboardZIndex}, theLayer, artboard);
+                layerData && artboardData.layer.push(layerData);
+                //导出位图
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSShapeGroup':
+                //保存形状数据
+                layerData = util.getLayerData(theLayer, {type: 'shape', zIndex: this.artboardZIndex}, theLayer, artboard);
+                layerData && artboardData.layer.push(layerData);
+                //导出形状组图片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSSymbolInstance':
+                //保存Symbol图层数据
+                layerData = util.getLayerData(theLayer, {type: 'symbol', zIndex: this.artboardZIndex}, theLayer, artboard);
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+            }
+          }
+
+          //递增zindex
+          this.artboardZIndex++;
+        }
+
+        return artboardData;
+      },
+
+      /*
+       * 判断图层是否可按组导出
+       * 64*64以内，并且不包含文字图层的图层可以按组导出
+       */
+      groupExportEnable: function(layer){
+        var frame = layer.frame().size;//Sketch 41 Fix: frameInArtboard() = > frame()
+        var parentLayer = layer.parentGroup();
+        //搜索条件
+        var predicate = NSPredicate.predicateWithFormat('className == "MSTextLayer"');
+        //当前图层组
+        var textLayers = parentLayer.children().filteredArrayUsingPredicate(predicate);
+
+        //图层尺寸小于64*64 并且不包含文字图层，
+        if(frame.width <= 64 && frame.height <= 64 && textLayers.count() == 0 && parentLayer.className() != 'MSArtboardGroup'){
+          return true;
+        }
+
+        return false;
+      },
+
+      /**
+       * 图层是否可用，以下类型的图层不可用:
+       * 1. 非可见图层、基本图形的子图形（比如：MSRectangleShape、MSShapePathLayer）
+       * 2. 图片所在的图层组已经作为图片导出过了（64*64以内的图层组会被按组导出）
+       */
+      isLayerEnable: function(layer){
+        //图层是否可见
+        var isVisible = true;
+        //图层是否已经被按组导出了
+        var hasExportByGroup = false;
+
+        //图层类名
+        var layerClass = (layer.className()).toString().toLowerCase();
+        //是否是蒙版子节点
+        var isMaskChildLayer = false;
+
+        //图形类名包括shape，但是不包括group关键字时表示这是一个基本图形，应该导出的是父图层
+        if(layerClass.indexOf('shape') > -1 && layerClass.indexOf('group') == -1){
+          //假装不可见，以便忽略
+          isVisible = false;
+          //return false;
+        }
+
+        //图层为文件夹或者画板时不用导出
+        if(layerClass == 'mslayergroup' || layerClass == 'msartboardgroup'){
+          //假装不可见，以便忽略
+          isVisible = false;
+          //return false;
+        }
+
+        //向上遍历
+        while(layer.className() != 'MSArtboardGroup' && layer.className() != 'MSSymbolMaster'){
+          var theLayerId = util.toJSString(layer.objectID());
+          //parenggroup不可见
+          if(!layer.isVisible()){
+            isVisible = false;
+          }
+          //图层所在的父节点已经被导出为图片了
+          if(this.groupExportLayers.indexOf(theLayerId) != -1){
+            hasExportByGroup = true;
+          }
+          //判断图层蒙版
+          if(theLayerId == this.currentMaskParentLayerId){
+            isMaskChildLayer = true;
+          }
+
+          layer = layer.parentGroup();
+        }
+
+        return {
+          isVisible: isVisible,
+          hasExportByGroup: hasExportByGroup,
+          isMaskChildLayer: isMaskChildLayer
+        }
+      },
+
+      /*
+       * 导出图层为图片
+       * layer 需要导出的图层
+       * options.name 导出文件名
+       * options.path 导出路径
+       */
+      exportLayerAsImage: function(layer, options){
+        var slice;
+        var sliceRect = null;
+
+        /**
+         * absoluteInfluenceRect 虽然返回值数据类型为CGRect
+         * 但是某些情况下得到的坐标尺寸与实际有1px的误差
+         */
+        var absoluteRect = layer.absoluteRect();
+        //导出名
+        var exportName = options.path +'/'+ options.name;
+
+        sliceRect = NSMakeRect(absoluteRect.x(), absoluteRect.y(), absoluteRect.width(), absoluteRect.height());
+        slice = [[MSExportRequest exportRequestsFromExportableLayer:layer] firstObject];
+        //忘记为什么要copyLightweight
+        slice.page = doc.currentPage();//.copyLightweight();
+        slice.format = 'png';
+
+        if(options.name == 'artboard'){
+          //画板按2x导出
+          slice.scale = this.expConfig.scale2x ? 2 : 1;
+          [doc saveArtboardOrSlice:slice toFile:exportName +'.png'];
+        }else{
+          // 2x
+          slice.scale = 2;
+          [doc saveArtboardOrSlice:slice toFile:exportName +'.png'];
+
+          if(/^svg/i.test(layer.name())){
+              slice = [[MSExportRequest exportRequestsFromExportableLayer:layer] firstObject];
+              slice.format = 'svg';
+              // 图层名以“svg”开头时，作为svg导出
+              [doc saveArtboardOrSlice:slice toFile:exportName +'.svg'];
+          }
+        }
+      },
+
+      // 保存json文件
+      saveDataJsonFile: function() {
+        var jsonData = JSON.stringify(this.sketchData);
+        var content = [NSString stringWithCString:jsonData encoding:NSUTF8StringEncoding];
+        var dataPath = this.tmpPath.dataPath;
+
+        [content writeToFile:dataPath atomically:1 encoding:NSUTF8StringEncoding error:nil];
+      }
+    }
+
+
+    var BorderPositions = ["center", "inside", "outside"],
+        FillTypes = ["color", "gradient"],
+        GradientTypes = ["linear", "radial", "angular"],
+        ShadowTypes = ["outer", "inner"],
+        TextAligns = ["left", "right", "center", "justify", "left"],
+        ResizingType = ["stretch", "corner", "resize", "float"];
+
+    var common = {
+        regexNames: /OVERLAY\#|WIDTH\#|HEIGHT\#|TOP\#|RIGHT\#|BOTTOM\#|LEFT\#|VERTICAL\#|HORIZONTAL\#|NOTE\#|PROPERTY\#|LITE\#/,
+
+        init: function(context) {
+            common.extend(context)
+
+            common.context = context
+            common.document = context.document
+            common.documentData = common.document.documentData()
+            common.UIMetadata = common.document.mutableUIMetadata()
+            common.window = common.document.window()
+            common.pages = common.document.pages()
+            common.page = common.document.currentPage()
+            common.artboard = common.page.currentArtboard()
+        },
+
+        toJSString: function(str){
+            return new String(str).toString();
+        },
+
+        toJSNumber: function(str){
+            return Number(common.toJSString(str));
+        },
+
+        toHTMLEncode: function(str){
+            /* return common.toJSString(str)
+                        .replace(/\</g, "&lt;")
+                        .replace(/\>/g, '&gt;')
+                        .replace(/\'/g, "&#39;")
+                        .replace(/\"/g, "&quot;")
+                        .replace(/\u2028/g,"\\u2028")
+                        .replace(/\u2029/g,"\\u2029")
+                        .replace(/\ud83c|\ud83d/g,"")
+            */
+            return str
+        },
+
+        emojiToEntities: function(str) {
+            var emojiRegExp = new RegExp("(?:[\u2700-\u27bf]|(?:\ud83c[\udde6-\uddff]){2}|[\ud800-\udbff][\udc00-\udfff]|[\u0023-\u0039]\ufe0f?\u20e3|\u3299|\u3297|\u303d|\u3030|\u24c2|\ud83c[\udd70-\udd71]|\ud83c[\udd7e-\udd7f]|\ud83c\udd8e|\ud83c[\udd91-\udd9a]|\ud83c[\udde6-\uddff]|[\ud83c[\ude01-\ude02]|\ud83c\ude1a|\ud83c\ude2f|[\ud83c[\ude32-\ude3a]|[\ud83c[\ude50-\ude51]|\u203c|\u2049|[\u25aa-\u25ab]|\u25b6|\u25c0|[\u25fb-\u25fe]|\u00a9|\u00ae|\u2122|\u2139|\ud83c\udc04|[\u2600-\u26FF]|\u2b05|\u2b06|\u2b07|\u2b1b|\u2b1c|\u2b50|\u2b55|\u231a|\u231b|\u2328|\u23cf|[\u23e9-\u23f3]|[\u23f8-\u23fa]|\ud83c\udccf|\u2934|\u2935|[\u2190-\u21ff])", "g")
+            return str.replace(
+                  emojiRegExp,
+                  function(match) {
+                      var u = "";
+                      for (var i = 0; i < match.length; i++) {
+                          if( !(i%2) ){
+                            u += "&#" + match.codePointAt(i)
+                          }
+                      }
+                      return u
+                })
+        },
+
+        hasEmoji: function(layer) {
+            var fonts = layer.attributedString().fontNames().allObjects();
+            return !!/AppleColorEmoji/.exec(fonts);
+        },
+
+        hasExportSizes: function(layer){
+            return layer.exportOptions().exportFormats().count() > 0;
+        },
+
+        isSliceGroup: function(layer) {
+            return common.is(layer, MSLayerGroup) && common.hasExportSizes(layer);
+        },
+
+        isExportable: function(layer) {
+            return common.is(layer, MSTextLayer) ||
+                common.is(layer, MSShapeGroup) ||
+                common.is(layer, MSRectangleShape) ||
+                common.is(layer, MSOvalShape) ||
+                common.is(layer, MSShapePathLayer) ||
+                common.is(layer, MSTriangleShape) ||
+                common.is(layer, MSStarShape) ||
+                common.is(layer, MSPolygonShape) ||
+                common.is(layer, MSBitmapLayer) ||
+                common.is(layer, MSSliceLayer) ||
+                common.is(layer, MSSymbolInstance) ||
+                common.isSliceGroup(layer)
+        },
+
+        getStates: function(layer){
+            var isVisible = true,
+                isLocked = false,
+                hasSlice = false,
+                isEmpty = false,
+                isMaskChildLayer = false,
+                isMeasure = false,
+                isShapeGroup = false;
+
+            while (!(common.is(layer, MSArtboardGroup) || common.is(layer, MSSymbolMaster))) {
+                var group = layer.parentGroup();
+                if(common.regexNames.exec(group.name())) {
+                  isMeasure = true;
+                }
+                if(common.is(group, MSShapeGroup)) {
+                  isShapeGroup = true;
+                }
+                if (!layer.isVisible()) {
+                  isVisible = false;
+                }
+                if (layer.isLocked()) {
+                  isLocked = true;
+                }
+                if (common.is(group, MSLayerGroup) && common.hasExportSizes(group)) {
+                  hasSlice = true
+                }
+                if (common.maskObjectID && group.objectID() == common.maskObjectID && !layer.shouldBreakMaskChain()) {
+                  isMaskChildLayer = true
+                }
+                if (common.is(layer, MSTextLayer) && layer.isEmpty()) {
+                  isEmpty = true
+                }
+                layer = group
+            }
+            return {
+                isVisible: isVisible,
+                isLocked: isLocked,
+                hasSlice: hasSlice,
+                isMaskChildLayer: isMaskChildLayer,
+                isMeasure: isMeasure,
+                isEmpty: isEmpty,
+                isShapeGroup: isShapeGroup
+            }
+        },
+
+        getMask: function(group, layer, layerData, layerStates){
+            if (layer.hasClippingMask()){
+                if(layerStates.isMaskChildLayer){
+                    common.maskCache.push({
+                        objectID: common.maskObjectID,
+                        rect: common.maskRect
+                    });
+                }
+                common.maskObjectID = group.objectID();
+                common.maskRect = layerData.rect;
+            } else if( !layerStates.isMaskChildLayer && common.maskCache.length > 0 ){
+                var mask = common.maskCache.pop();
+                common.maskObjectID = mask.objectID;
+                common.maskRect = mask.rect;
+                layerStates.isMaskChildLayer = true;
+            } else if (!layerStates.isMaskChildLayer ) {
+                common.maskObjectID = undefined;
+                common.maskRect = undefined;
+            }
+
+            if (layerStates.isMaskChildLayer){
+                var layerRect = layerData.rect,
+                    maskRect = common.maskRect;
+
+                layerRect.maxX = layerRect.x + layerRect.width;
+                layerRect.maxY = layerRect.y + layerRect.height;
+                maskRect.maxX = maskRect.x + maskRect.width;
+                maskRect.maxY = maskRect.y + maskRect.height;
+
+                var distance = common.getDistance(layerRect, maskRect),
+                    width = layerRect.width,
+                    height = layerRect.height;
+
+                if(distance.left < 0) width += distance.left;
+                if(distance.right < 0) width += distance.right;
+                if(distance.top < 0) height += distance.top;
+                if(distance.bottom < 0) height += distance.bottom;
+
+                layerData.rect = {
+                    x: (distance.left < 0)? maskRect.x: layerRect.x,
+                    y: (distance.top < 0)? maskRect.y: layerRect.y,
+                    width: width,
+                    height: height
+                }
+            }
+        },
+
+        getExportable: function(layer, savePath){
+            var exportable = [],
+                size, sizes = layer.exportOptions().exportFormats(),
+                fileFormat = common.toJSString(sizes[0].fileFormat()),
+                matchFormat = /png|jpg|tiff|webp/.exec(fileFormat);
+            var exportFormats = [
+                    { scale: 1, suffix: "", format: fileFormat },
+                    { scale: 2, suffix: "@2x", format: fileFormat },
+                    { scale: 3, suffix: "@3x", format: fileFormat }
+                ]
+
+            for (exportFormat of exportFormats) {
+                var prefix = exportFormat.prefix || "",
+                    suffix = exportFormat.suffix || "";
+
+                exportable.push({
+                    name: common.toJSString(layer.name()),
+                    format: fileFormat,
+                    path: prefix + layer.name() + suffix + "." + exportFormat.format
+                });
+            }
+
+            return exportable;
+        },
+
+        getSlice: function(layer, layerData, symbolLayer){
+            var objectID = (layerData.type == "symbol") ? common.toJSString(layer.symbolMaster().objectID()):
+                              (symbolLayer) ? common.toJSString(symbolLayer.objectID()):
+                              layerData.objectID;
+            if ((layerData.type == "slice" || (layerData.type == "symbol" && common.hasExportSizes(layer.symbolMaster()))) && !common.sliceCache[objectID]) {
+                var sliceLayer = (layerData.type == "symbol")? layer.symbolMaster(): layer;
+                if (symbolLayer && common.is(symbolLayer.parentGroup(), MSSymbolMaster)) {
+                    layer.exportOptions().setLayerOptions(2);
+                }
+
+                common.assetsPath = common.savePath + "/assets";
+                NSFileManager.defaultManager().createDirectoryAtPath_withIntermediateDirectories_attributes_error(common.assetsPath, true, nil, nil);
+
+                common.sliceCache[objectID] = layerData.exportable = common.getExportable(sliceLayer);
+                common.slices.push({
+                    name: layerData.name,
+                    objectID: objectID,
+                    rect: layerData.rect,
+                    exportable: layerData.exportable
+                })
+            } else if (common.sliceCache[objectID]){
+                layerData.exportable = common.sliceCache[objectID];
+            }
+        },
+
+        getSymbol: function(artboard, layer, layerData, data){
+            if (layerData.type == "symbol") {
+                var symbolObjectID = common.toJSString(layer.symbolMaster().objectID());
+
+                layerData.objectID = symbolObjectID;
+
+                if (!common.hasExportSizes(layer.symbolMaster()) && layer.symbolMaster().children().count() > 1) {
+                    var symbolRect = common.getRect(layer),
+                        symbolChildren = layer.symbolMaster().children(),
+                        tempSymbol = layer.duplicate(),
+                        tempGroup = tempSymbol.detachStylesAndReplaceWithGroupRecursively(false);
+
+                    var tempSymbolLayers = tempGroup.children().objectEnumerator(),
+                        overrides = layer.overrides(),
+                        idx = 0;
+
+                    overrides = (overrides)? overrides.objectForKey(0): undefined;
+
+                    while (tempSymbolLayer = tempSymbolLayers.nextObject()) {
+                        if (common.is(tempSymbolLayer, MSSymbolInstance)) {
+                            var symbolMasterObjectID = common.toJSString(symbolChildren[idx].objectID());
+                            if (overrides && overrides[symbolMasterObjectID] && !!overrides[symbolMasterObjectID].symbolID) {
+                                var changeSymbol = self.find({key: "(symbolID != NULL) && (symbolID == %@)", match: common.toJSString(overrides[symbolMasterObjectID].symbolID)}, common.document.documentData().allSymbols());
+                                if (changeSymbol) {
+                                   tempSymbolLayer.changeInstanceToSymbol(changeSymbol);
+                                } else {
+                                   tempSymbolLayer = undefined;
+                                }
+                              }
+                          }
+                          if (tempSymbolLayer) {
+                            common.getLayer(
+                                artboard,
+                                tempSymbolLayer,
+                                data,
+                                symbolChildren[idx]
+                            );
+                          }
+                          idx++
+                      }
+                      common.removeLayer(tempGroup);
+                  }
+              }
+        },
+
+        getText: function(artboard, layer, layerData, data){
+            if (layerData.type == "text" && layer.attributedString().treeAsDictionary().value.attributes.length > 1) {
+                if (common.hasEmoji(layer)){
+                    return false;
+                }
+                var svgExporter = SketchSVGExporter.new().exportLayers([layer.immutableModelObject()]),
+                    svgStrong = common.toJSString(NSString.alloc().initWithData_encoding(svgExporter, 4)),
+                    regExpTspan = new RegExp('<tspan([^>]+)>([^<]*)</tspan>', 'g'),
+                    regExpContent = new RegExp('>([^<]*)<'),
+                    offsetX, offsetY, textData = [],
+                    layerRect = common.getRect(layer),
+                    svgSpans = svgStrong.match(regExpTspan);
+
+                for (var a = 0; a < svgSpans.length; a++) {
+                    var attrsData = common.getTextAttrs(svgSpans[a]);
+                    attrsData.content = svgSpans[a].match(regExpContent)[1];
+                    offsetX = (!offsetX || (offsetX && offsetX > common.toJSNumber(attrsData.x))) ? common.toJSNumber(attrsData.x) : offsetX;
+
+                    offsetY = (!offsetY || (offsetY && offsetY > common.toJSNumber(attrsData.y))) ? common.toJSNumber(attrsData.y) : offsetY;
+                    textData.push(attrsData);
+                }
+
+                var parentGroup = layer.parentGroup(),
+                    parentRect = common.getRect(parentGroup),
+                    colorHex = layerData.color["color-hex"].split(" ")[0];
+
+                textData.forEach( function(tData) {
+                    if (tData["content"].trim() && (colorHex != tData.fill || Object.getOwnPropertyNames(tData).length > 4)) {
+                        var textLayer = common.addText(),
+                            colorRGB = common.hexToRgb(tData.fill || colorHex),
+                            color = MSColor.colorWithRed_green_blue_alpha(colorRGB.r / 255, colorRGB.g / 255, colorRGB.b / 255, (tData["fill-opacity"] || 1));
+                        textLayer.setName(tData.content);
+                        textLayer.setStringValue(tData.content);
+                        textLayer.setTextColor(color);
+                        textLayer.setFontSize(tData["font-size"] || layerData.fontSize);
+
+                        var defaultLineHeight = layer.font().defaultLineHeightForFont();
+
+                        textLayer.setLineHeight(layer.lineHeight() || defaultLineHeight);
+
+                        textLayer.setCharacterSpacing(common.toJSNumber(tData["letter-spacing"]) || layer.characterSpacing());
+                        textLayer.setTextAlignment(layer.textAlignment())
+
+                        if (tData["font-family"]) {
+                            textLayer.setFontPostscriptName(tData["font-family"].split(",")[0]);
+                        } else {
+                            textLayer.setFontPostscriptName(layer.fontPostscriptName());
+                        }
+
+                        parentGroup.addLayers([textLayer]);
+
+                        var textLayerRect = common.getRect(textLayer);
+
+                        textLayerRect.setX(layerRect.x + (common.toJSNumber(tData.x) - offsetX));
+                        textLayerRect.setY(layerRect.y + (common.toJSNumber(tData.y) - offsetY));
+
+                        common.getLayer(
+                            artboard,
+                            textLayer,
+                            data
+                        );
+
+                        common.removeLayer(textLayer);
+                      }
+                });
+            }
+        },
+
+        getTextAttrs: function(str){
+            var data = {},
+                regExpAttr = new RegExp('([a-z\-]+)\=\"([^\"]+)\"', 'g'),
+                regExpAttr1 = new RegExp('([a-z\-]+)\=\"([^\"]+)\"'),
+                attrs = str.match(regExpAttr);
+            for (var a = 0; a < attrs.length; a++) {
+                var attrData = regExpAttr1.exec(attrs[a]),
+                    key = attrData[1],
+                    value = attrData[2];
+
+                data[key] = value;
+            }
+            return data;
+        },
+
+        addText: function(container){
+            var text = MSTextLayer.new();
+            text.setStringValue("text");
+            return text;
+        },
+
+        pointToJSON: function(point){
+            return {
+                x: parseFloat(point.x),
+                y: parseFloat(point.y)
+            }
+        },
+
+        /**
+        * 获取坐标数据
+        * @param react 图层坐标
+        * @param referenceRect 图层父坐标
+        */
+        rectToJSON: function(rect, referenceRect) {
+          if (referenceRect) {
+            return {
+              x: Math.round( ( rect.x() - referenceRect.x() ) * 10 ) / 10,
+              y: Math.round( ( rect.y() - referenceRect.y() ) * 10 ) / 10,
+              width: Math.round( rect.width() * 10 ) / 10,
+              height: Math.round( rect.height() * 10 ) / 10
+            };
+          }
+
+          return {
+            x: Math.round( rect.x() * 10 ) / 10,
+            y: Math.round( rect.y() * 10 ) / 10,
+            width: Math.round( rect.width() * 10 ) / 10,
+            height: Math.round( rect.height() * 10 ) / 10
+          }
+        },
+
+        colorToJSON: function(color) {
+            return {
+                r: Math.round(color.red() * 255),
+                g: Math.round(color.green() * 255),
+                b: Math.round(color.blue() * 255),
+                a: color.alpha(),
+                "color-hex": color.immutableModelObject().stringValueWithAlpha(false) + " " + Math.round(color.alpha() * 100) + "%",
+                "argb-hex": "#" + common.toHex(color.alpha() * 255) + color.immutableModelObject().stringValueWithAlpha(false).replace("#", ""),
+                "css-rgba": "rgba(" + [
+                        Math.round(color.red() * 255),
+                        Math.round(color.green() * 255),
+                        Math.round(color.blue() * 255),
+                        (Math.round(color.alpha() * 100) / 100)
+                    ].join(",") + ")",
+                "ui-color": "(" + [
+                        "r:" + (Math.round(color.red() * 100) / 100).toFixed(2),
+                        "g:" + (Math.round(color.green() * 100) / 100).toFixed(2),
+                        "b:" + (Math.round(color.blue() * 100) / 100).toFixed(2),
+                        "a:" + (Math.round(color.alpha() * 100) / 100).toFixed(2)
+                    ].join(" ") + ")"
+            }
+        },
+          
+        colorStopToJSON: function(colorStop) {
+            return {
+                color: common.colorToJSON(colorStop.color()),
+                position: colorStop.position()
+            }
+        },
+
+        gradientToJSON: function(gradient) {
+            var stopsData = [],
+                stop, stopIter = gradient.stops().objectEnumerator();
+            while (stop = stopIter.nextObject()) {
+                stopsData.push(common.colorStopToJSON(stop));
+            }
+
+            return {
+                type: GradientTypes[gradient.gradientType()],
+                from: common.pointToJSON(gradient.from()),
+                to: common.pointToJSON(gradient.to()),
+                colorStops: stopsData
+            }
+        },
+
+        shadowToJSON: function(shadow) {
+            return {
+                type: shadow instanceof MSStyleShadow ? "outer" : "inner",
+                offsetX: shadow.offsetX(),
+                offsetY: shadow.offsetY(),
+                blurRadius: shadow.blurRadius(),
+                spread: shadow.spread(),
+                color: common.colorToJSON(shadow.color())
+            }
+        },
+
+        getRadius: function(layer){
+            if(layer.layers && common.is(layer.layers().firstObject(), MSRectangleShape)){
+                return (layer.layers().firstObject().cornerRadiusString().split(';').map(Number).length == 1) ? layer.layers().firstObject().fixedRadius() : layer.layers().firstObject().cornerRadiusString().split(';').map(Number)
+            } else if(common.is(layer, MSRectangleShape)) {
+                return (layer.cornerRadiusString().split(';').map(Number).length == 1) ? layer.fixedRadius() : layer.cornerRadiusString().split(';').map(Number)
+            } else {
+                return 0
+            }
+        },
+
+        getBorders: function(style) {
+            var bordersData = [],
+            border, borderIter = style.borders().objectEnumerator();
+            while (border = borderIter.nextObject()) {
+                if (border.isEnabled()) {
+                    var fillType = FillTypes[border.fillType()],
+                        borderData = {
+                            fillType: fillType,
+                            position: BorderPositions[border.position()],
+                            thickness: border.thickness()
+                        }
+                    switch (fillType) {
+                        case "color":
+                            borderData.color = common.colorToJSON(border.color());
+                            break
+                        case "gradient":
+                            borderData.gradient = common.gradientToJSON(border.gradient());
+                            break
+                        default:
+                            continue
+                    }
+                    bordersData.push(borderData)
+                }
+            }
+            return bordersData
+        },
+
+        getFills: function(style) {
+              var fillsData = [],
+                  fill, fillIter = style.fills().objectEnumerator();
+              while (fill = fillIter.nextObject()) {
+                  if (fill.isEnabled()) {
+                      var fillType = FillTypes[fill.fillType()],
+                          fillData = {
+                              fillType: fillType
+                          };
+
+                      switch (fillType) {
+                          case "color":
+                              fillData.color = common.colorToJSON(fill.color());
+                              break;
+
+                          case "gradient":
+                              fillData.gradient = common.gradientToJSON(fill.gradient());
+                              break;
+
+                          default:
+                              continue;
+                      }
+
+                      fillsData.push(fillData);
+                  }
+              }
+
+              return fillsData;
+        },
+
+        getShadows: function(style) {
+            var shadowsData = [],
+                shadow, shadowIter = style.shadows().objectEnumerator();
+            while (shadow = shadowIter.nextObject()) {
+                if (shadow.isEnabled()) {
+                    shadowsData.push(common.shadowToJSON(shadow));
+                }
+            }
+
+            shadowIter = style.innerShadows().objectEnumerator();
+            while (shadow = shadowIter.nextObject()) {
+                if (shadow.isEnabled()) {
+                    shadowsData.push(common.shadowToJSON(shadow));
+                }
+            }
+
+            return shadowsData
+        },
+
+        getOpacity: function(style){
+            return style.contextSettings().opacity()
+        },
+
+        getStyleName: function(layer){
+            var styles = (common.is(layer, MSTextLayer))? common.document.documentData().layerTextStyles(): common.document.documentData().layerStyles(),
+            layerStyle = layer.style(),
+            sharedObjectID = layerStyle.objectID(),
+            style;
+
+            styles = styles.objectsSortedByName()
+
+            if(styles.count() > 0){
+                style = common.find({key: "(objectID != NULL) && (objectID == %@)", match: sharedObjectID}, styles)
+            }
+
+            if(!style) return ""
+            return common.toJSString(style.name())
+        },
+
+        toHex:function(c) {
+            var hex = Math.round(c).toString(16).toUpperCase()
+            return hex.length == 1 ? "0" + hex : hex
+        },
+
+        hexToRgb:function(hex) {
+            var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: common.toHex(result[1]),
+                g: common.toHex(result[2]),
+                b: common.toHex(result[3])
+            } : null
+        },
+
+        getDistance: function(targetRect, containerRect){
+            var containerRect = containerRect || common.getRect(common.current);
+
+            return {
+                top: (targetRect.y - containerRect.y),
+                right: (containerRect.maxX - targetRect.maxX),
+                bottom: (containerRect.maxY - targetRect.maxY),
+                left: (targetRect.x - containerRect.x),
+            }
+        },
+
+        getRect: function(layer){
+            var rect = layer.absoluteRect();
+            return {
+                x: Math.round(rect.x()),
+                y: Math.round(rect.y()),
+                width: Math.round(rect.width()),
+                height: Math.round(rect.height()),
+                maxX: Math.round(rect.x() + rect.width()),
+                maxY: Math.round(rect.y() + rect.height()),
+                setX: function(x){ rect.setX(x); this.x = x; this.maxX = this.x + this.width; },
+                setY: function(y){ rect.setY(y); this.y = y; this.maxY = this.y + this.height; },
+                setWidth: function(width){ rect.setWidth(width); this.width = width; this.maxX = this.x + this.width; },
+                setHeight: function(height){ rect.setHeight(height); this.height = height; this.maxY = this.y + this.height; }
+            };
+        },
+
+        /** 
+        * 判断图层类型
+        * @param layer 图层
+        * @param theClass 类型
+        */
+        is: function(layer, theClass) {
+            if(!layer) return false;
+            var klass = layer.class();
+            return klass === theClass;
+        },
+
+        find: function(format, container, returnArray){
+            if(!format || !format.key  || !format.match){
+                return false
+            }
+            var predicate = NSPredicate.predicateWithFormat(format.key,format.match),
+                container = container || common.current,
+                items;
+
+            if(container.pages){
+                items = container.pages()
+            } else if (common.is(container, MSSharedStyleContainer) || common.is(container, MSSharedTextStyleContainer)){
+                items = container.objectsSortedByName()
+            } else if (container.children) {
+                items = container.children()
+            } else{
+                items = container
+            }
+
+            var queryResult = items.filteredArrayUsingPredicate(predicate);
+
+            if(returnArray) return queryResult
+
+            if (queryResult.count() == 1){
+                return queryResult[0]
+            } else if (queryResult.count() > 0){
+                return queryResult
+            } else {
+                return false
+            }
+        },
+
+        /** 
+        * 判断是否有导出项
+        * @param layer 图层
+        */
+        hasExportSizes: function(layer){
+            return layer.exportOptions().exportFormats().count() > 0;
+        },
+
+        removeLayer: function(layer){
+            var container = layer.parentGroup();
+            if (container) container.removeLayer(layer);
+        },
+
+        /** 
+        * 获取图层详情
+        * @param artboard 面板
+        * @param layer 图层
+        */
+        getLayer: function(artboard, layer, data, symbolLayer){
+            var artboardRect = artboard.absoluteRect();
+            var layerStates = common.getStates(layer);
+            var group = layer.parentGroup();
+
+            if (layer && common.is(layer, MSLayerGroup) && /NOTE\#/.exec(layer.name())) {
+                var textLayer
+                var children = layer.children()
+                for (let i = 0; i < children.length; i++) {
+                    if(children[i].stringValue) {
+                        textLayer = children[i]
+                        break
+                    }
+                }
+                data.notes.push({
+                    rect: common.rectToJSON(textLayer.absoluteRect(), artboardRect),
+                    note: common.toHTMLEncode(common.emojiToEntities(textLayer.stringValue())).replace(/\n/g, "<br>")
+                })
+                layer.setIsVisible(false)
+            }
+
+            if (!common.isExportable(layer) ||
+                !layerStates.isVisible ||
+                (layerStates.isLocked && !common.is(layer, MSSliceLayer)) ||
+                layerStates.isEmpty ||
+                layerStates.hasSlice ||
+                layerStates.isMeasure ||
+                layerStates.isShapeGroup) {
+                    return false;
+            }
+
+            var layerType = common.is(layer, MSTextLayer) ? "text" :
+                common.is(layer, MSSymbolInstance) ? "symbol" :
+                common.is(layer, MSSliceLayer) || common.hasExportSizes(layer)? "slice":
+                "shape";
+
+            if (symbolLayer && layerType == "text" && layer.textBehaviour() == 0) {
+                layer.setTextBehaviour(1);
+                layer.setTextBehaviour(0);
+            }
+
+            var exportLayerRect;
+            if (layerType != "text") {
+                var influenceCGRect = layer.absoluteInfluenceRect();
+                exportLayerRect = {
+                    x: function(){return influenceCGRect.origin.x;},
+                    y: function(){return influenceCGRect.origin.y;},
+                    width: function(){return influenceCGRect.size.width;},
+                    height: function(){return influenceCGRect.size.height;}
+                 }
+            } else {
+                exportLayerRect = layer.absoluteRect();
+            }
+
+            var layerData = {
+                objectID: common.toJSString( layer.objectID() ),
+                type: layerType,
+                name: common.toHTMLEncode(common.emojiToEntities(layer.name())),
+                rect: common.rectToJSON(exportLayerRect, artboardRect)
+            }
+
+            if (symbolLayer) {
+                layerData.objectID = common.toJSString(symbolLayer.objectID())
+            }
+
+            if (layerType != "slice") {
+                var layerStyle = layer.style()
+                layerData.rotation = layer.rotation()
+                layerData.radius = common.getRadius(layer)
+                layerData.borders = common.getBorders(layerStyle)
+                layerData.fills = common.getFills(layerStyle)
+                layerData.shadows = common.getShadows(layerStyle)
+                layerData.opacity = common.getOpacity(layerStyle)
+                layerData.styleName = common.getStyleName(layer)
+            }
+
+            if (layerType == "text") {
+                layerData.content = common.toHTMLEncode(common.emojiToEntities(layer.stringValue()));
+                layerData.color = common.colorToJSON(layer.textColor());
+                layerData.fontSize = layer.fontSize();
+                layerData.fontFace = common.toJSString(layer.fontPostscriptName());
+                layerData.textAlign = TextAligns[layer.textAlignment()];
+                layerData.letterSpacing = common.toJSNumber(layer.characterSpacing()) || 0;
+                layerData.lineHeight = layer.lineHeight() || layer.font().defaultLineHeightForFont();
+            }
+
+            var layerCSSAttributes = layer.CSSAttributes(),
+                css = [];
+
+            for (var i = 0; i < layerCSSAttributes.count(); i++) {
+                var c = layerCSSAttributes[i]
+                if(! /\/\*/.exec(c) ) css.push(common.toJSString(c));
+            }
+            if (css.length > 0) {
+                layerData.css = css;
+                if(common.is(layer, MSRectangleShape) && !!layer.fixedRadius()){
+                    layerData.css.push('border-radius: ' + layer.cornerRadiusString().replace(/;/g,'px ') + 'px;');
+                }
+            }
+
+            common.getMask(group, layer, layerData, layerStates);
+            common.getSlice(layer, layerData, symbolLayer);
+            data.layers.push(layerData);
+            common.getSymbol(artboard, layer, layerData, data);
+            common.getText(artboard, layer, layerData, data);
+        },
+        extend: function(options) {
+            for (var key in options) {
+                common[key] = options[key]
+            }
+        },
+        exportPanel: function() {
+            var data = {};
+            data.selection = [];
+            data.current = [];
+            data.pages = [];
+            var pages = common.document.pages().objectEnumerator();
+            while(page = pages.nextObject()){
+                var pageData = {};
+                var artboards = page.artboards().objectEnumerator();
+                pageData.name = common.toJSString(page.name());
+                pageData.objectID = common.toJSString(page.objectID());
+                pageData.artboards = [];
+
+                while(artboard = artboards.nextObject()){
+                    var artboardData = {};
+                    artboardData.name = common.toJSString(artboard.name());
+                    artboardData.objectID = common.toJSString(artboard.objectID());
+                    artboardData.MSArtboardGroup = artboard;
+                    pageData.artboards.push(artboardData);
+                }
+                pageData.artboards.reverse()
+                data.pages.push(pageData);
+
+                for (var p = 0; p < data.pages.length; p++) {
+                    var artboards = data.pages[p].artboards
+                    for (var a = 0; a < artboards.length; a++) {
+                        var artboard = artboards[a].MSArtboardGroup
+                        var objectID = common.toJSString(artboard.objectID())
+                        common.allCount += artboard.children().count()
+                        common.selectionArtboards.push(artboard)
+                    }
+                }
+            }
+        },
+        export: function() {
+            var data = {
+                notes: [],
+                layers: []
+            }
+            common.current = common.artboard || common.page
+            common.selectionArtboards = []
+            common.allCount = 0
+            common.maskObjectID = undefined
+            common.maskRect = {}
+            common.maskCache = []
+            common.slices = []
+            common.sliceCache = {}
+            common.savePath = ''
+            common.exportPanel()
+            for (var i = 0; i < common.selectionArtboards.length; i++) {
+                var artboard = common.selectionArtboards[i]
+                for (var j = 0; j < artboard.children().length; j++) {
+                    var layer = artboard.children()[j]
+                    common.getLayer(artboard, layer, data)
+                }
+            }
+            common.exportAsZip(data)
+        },
+        exportAsZip: function(pageData) {
+            var marketch = null;
+            //打包结果
+            var zipResult = null;
+            //获取保存路径
+            var exportPath = common.getSavePath();
+            var artboardType = 'all';
+
+            if (exportPath) {
+                // 延迟1s执行，避免阻塞ui
+                marketch = new Marketch().run({
+                        layer: true,
+                        artboard: artboardType,
+                        saveSource: false,
+                        scale2x: true,
+                        ctx: common.context,
+                        doc: common.document,
+                        pageData: pageData
+                    })
+
+                    log(marketch)
+
+                    zipResult = common.zipFile(marketch.tmpPath.basePath, exportPath);
+                    if (zipResult) {
+                        common.document.showMessage(I18N.EXPORTSUCCESS);
+                        var zipURL = [NSURL fileURLWithPath: exportPath];
+                        var fileURLs = [NSArray arrayWithArray:[zipURL]];
+                        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:fileURLs];
+                    } else {
+                        common.document.showMessage(I18N.EXPORTFAIL);
+                    }
+            }
+        },
+        getSavePath: function(){
+            var savePanel = NSSavePanel.savePanel();
+            var docName = common.toJSString(common.document.displayName());
+
+            savePanel.setTitle(I18N.EXPORT);
+            savePanel.setNameFieldLabel(I18N.EXPORTTO);
+            savePanel.setShowsTagField(false);
+            savePanel.setAllowedFileTypes(NSArray.arrayWithObject(@'zip'));
+            savePanel.setAllowsOtherFileTypes(false);
+            savePanel.setCanCreateDirectories(true);
+
+            if (!common.document.fileURL()) {
+                docName = 'Untitled';
+            } else  {
+                docName = docName.replace('.sketch', '');
+            }
+
+            //设置默认导出zip包的文件名为sketch源文件名
+            savePanel.setNameFieldStringValue([NSString stringWithFormat:@'%@.zip', docName]);
+
+            if (savePanel.runModal() != NSOKButton){
+                return false;
+            } else {
+                return savePanel.URL().path();
+            }
+        },
+        //打包文件
+        zipFile: function(zipFile, destination){
+            var zipTask = [[NSTask alloc] init];
+
+            [zipTask setLaunchPath:@'/usr/bin/ditto'];
+            //zip参数
+            [zipTask setArguments:[NSArray arrayWithArray:['-c', '-k', '-X', '--rsrc', zipFile, destination]]];
+
+            [zipTask launch];
+            [zipTask waitUntilExit];
+
+            if ([zipTask terminationStatus] != 0) {
+                return false;
+            } else {
+                return true;
+            }
+        }
+    }
+
+    common.init(context)
+    common.export()
+};
+          

@@ -1,0 +1,24 @@
+{
+  "author" : "",
+  "commands" : [
+    {
+      "script" : "script.cocoascript",
+      "name" : "sketchToWeipage",
+      "handlers" : {
+        "run" : "onRun"
+      },
+      "identifier" : "com.bohemiancoding.sketch.runscriptidentifier"
+    }
+  ],
+  "menu" : {
+    "title" : "sketchToWeipage",
+    "items" : [
+      "com.bohemiancoding.sketch.runscriptidentifier"
+    ]
+  },
+  "identifier" : "com.example.sketch.19d31588-7064-4460-aeb4-c0b6bfc8958b",
+  "version" : "1.0",
+  "description" : "",
+  "authorEmail" : "",
+  "name" : "sketchToWeipage"
+}
