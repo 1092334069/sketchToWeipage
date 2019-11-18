@@ -269,7 +269,12 @@ var onRun = function(context) {
           height: Math.ceil(layerFrame.height()),
           sharedStyleType: '',
           sharedStyle: '',
-          notes: []
+          notes: [],
+          isSymbolMaster: false
+        }
+
+        if (config.type == 'symbolMaster') {
+          layerData.isSymbolMaster = true
         }
 
         //修正边框对图形、位图的位置影响
@@ -312,6 +317,11 @@ var onRun = function(context) {
 
           if(config.type == 'symbol'){
             layerData.symbolId = util.toJSString(layer.symbolID());
+            layerData.symbolList = []
+            var symbolList = layer.symbolMaster().children()
+            for (var i = 0; i < symbolList.count(); i++) {
+              layerData.symbolList.push(util.toJSString(symbolList[i].objectID()))
+            }
           }
 
           return layerData;
@@ -403,7 +413,7 @@ var onRun = function(context) {
           return layerData;
         }
 
-        return null;
+        return layerData;
       },
 
       trim: function(str){
@@ -480,9 +490,7 @@ var onRun = function(context) {
         //页面数据
         pageData: {
         },
-        //画板数据
-        artboard: {},
-        layerList: []
+        layerGroup: []
       };
       //保存被合并小图输出的图层父节点id
       this.groupExportLayers = [];
@@ -505,7 +513,7 @@ var onRun = function(context) {
         ctx = expConfig.ctx
         doc = expConfig.doc
 
-        this.sketchData.layerList = expConfig.pageData.layers
+        this.sketchData.layerGroup = expConfig.pageData.artboard
 
 
 
@@ -689,7 +697,7 @@ var onRun = function(context) {
           this.artboardZIndex = 0;
 
           //处理画板&&图层数据
-          sketchData.artboard[artboardId] = this.getArtboardData({
+          this.getArtboardData({
             artboard: theArtboard,
             artboardPath: artboardPath
           });
@@ -741,9 +749,9 @@ var onRun = function(context) {
           exportConfig.name = layerId;
 
           //图层不可见
-          if(!layerStates.isVisible){continue;}
+          //if(!layerStates.isVisible){continue;}
           //图层所在的组已经被作为图片导出过了
-          if(layerStates.hasExportByGroup){continue;}
+          //if(layerStates.hasExportByGroup){continue;}
 
           if(layerStates.isMaskChildLayer && this.currentMaskLayerId){
             artboardData.mask[this.currentMaskLayerId].push(layerId);
@@ -775,32 +783,30 @@ var onRun = function(context) {
             //保存图层数据
             layerData = util.getLayerData(theLayer.parentGroup(), {type: 'bitmap', zIndex: this.artboardZIndex}, theLayer, artboard);
             artboardData.layer.push(layerData);
-
             //导出父图层
             exportConfig.name = util.toJSString(theLayer.parentGroup().objectID());
             exportLayerAsImage && this.exportLayerAsImage(theLayer.parentGroup(), exportConfig);
-          }else{
+          } else {
             switch(layerType){
               case 'MSTextLayer':
                 //保存文字图层数据
-                layerData = util.getLayerData(theLayer, {type: 'text', zIndex: this.artboardZIndex}, theLayer, artboard);
+                layerData = util.getLayerData(theLayer, {type: 'text', zIndex: this.artboardZIndex});
                 layerData && artboardData.layer.push(layerData);
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
                 break;
 
               case 'MSSliceLayer':
                 //保存切片图层数据
-                layerData = util.getLayerData(theLayer, {type: 'slice', zIndex: this.artboardZIndex}, theLayer, artboard);
+                layerData = util.getLayerData(theLayer, {type: 'slice', zIndex: this.artboardZIndex});
                 layerData && artboardData.slice.push(layerData);
+                layerData && artboardData.layer.push(layerData);
                 //导出切片
-                exportLayerAsImage && this.exportLayerAsImage(theLayer, {
-                  name: layerName,
-                  path: obj.artboardPath +'/slice'
-                });
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
                 break;
 
               case 'MSBitmapLayer':
                 //保存位图数据
-                layerData = util.getLayerData(theLayer, {type: 'bitmap', zIndex: this.artboardZIndex}, theLayer, artboard);
+                layerData = util.getLayerData(theLayer, {type: 'bitmap', zIndex: this.artboardZIndex});
                 layerData && artboardData.layer.push(layerData);
                 //导出位图
                 exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
@@ -808,7 +814,7 @@ var onRun = function(context) {
 
               case 'MSShapeGroup':
                 //保存形状数据
-                layerData = util.getLayerData(theLayer, {type: 'shape', zIndex: this.artboardZIndex}, theLayer, artboard);
+                layerData = util.getLayerData(theLayer, {type: 'shape', zIndex: this.artboardZIndex});
                 layerData && artboardData.layer.push(layerData);
                 //导出形状组图片
                 exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
@@ -816,7 +822,77 @@ var onRun = function(context) {
 
               case 'MSSymbolInstance':
                 //保存Symbol图层数据
-                layerData = util.getLayerData(theLayer, {type: 'symbol', zIndex: this.artboardZIndex}, theLayer, artboard);
+                layerData = util.getLayerData(theLayer, {type: 'symbol', zIndex: this.artboardZIndex});
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSRectangleShape':
+                layerData = util.getLayerData(theLayer, {type: 'rectangle', zIndex: this.artboardZIndex});
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSOvalShape':
+                layerData = util.getLayerData(theLayer, {type: 'oval', zIndex: this.artboardZIndex});
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSShapePathLayer':
+                layerData = util.getLayerData(theLayer, {type: 'pathLayer', zIndex: this.artboardZIndex});
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSTriangleShape':
+                layerData = util.getLayerData(theLayer, {type: 'triangle', zIndex: this.artboardZIndex});
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSStarShape':
+                layerData = util.getLayerData(theLayer, {type: 'star', zIndex: this.artboardZIndex});
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSPolygonShape':
+                layerData = util.getLayerData(theLayer, {type: 'polygon', zIndex: this.artboardZIndex});
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSSymbolMaster':
+                layerData = util.getLayerData(theLayer, {type: 'symbolMaster', zIndex: this.artboardZIndex});
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSLayerGroup':
+                layerData = util.getLayerData(theLayer, {type: 'layerGroup', zIndex: this.artboardZIndex});
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              case 'MSArtboardGroup':
+                layerData = util.getLayerData(theLayer, {type: 'artboardGroup', zIndex: this.artboardZIndex});
+                layerData && artboardData.layer.push(layerData);
+                //导出切片
+                exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
+                break;
+
+              default:
+                layerData = util.getLayerData(theLayer, {type: 'other', zIndex: this.artboardZIndex});
                 layerData && artboardData.layer.push(layerData);
                 //导出切片
                 exportLayerAsImage && this.exportLayerAsImage(theLayer, exportConfig);
@@ -930,16 +1006,12 @@ var onRun = function(context) {
         //忘记为什么要copyLightweight
         slice.page = doc.currentPage();//.copyLightweight();
         slice.format = 'png';
+        slice.scale = 2;
 
         if(options.name == 'artboard'){
-          //画板按2x导出
-          slice.scale = this.expConfig.scale2x ? 2 : 1;
           [doc saveArtboardOrSlice:slice toFile:exportName +'.png'];
         }else{
-          // 2x
-          slice.scale = 2;
           [doc saveArtboardOrSlice:slice toFile:exportName +'.png'];
-
           if(/^svg/i.test(layer.name())){
               slice = [[MSExportRequest exportRequestsFromExportableLayer:layer] firstObject];
               slice.format = 'svg';
@@ -1762,9 +1834,8 @@ var onRun = function(context) {
             }
         },
         export: function() {
-            var data = {
-                notes: [],
-                layers: []
+            var pageData = {
+              artboard: []
             }
             common.current = common.artboard || common.page
             common.selectionArtboards = []
@@ -1778,12 +1849,19 @@ var onRun = function(context) {
             common.exportPanel()
             for (var i = 0; i < common.selectionArtboards.length; i++) {
                 var artboard = common.selectionArtboards[i]
+                var data = {
+                    'id': common.toJSString(artboard.objectID()),
+                    name: common.toJSString(artboard.name()),
+                    notes: [],
+                    layers: []
+                }
                 for (var j = 0; j < artboard.children().length; j++) {
                     var layer = artboard.children()[j]
                     common.getLayer(artboard, layer, data)
                 }
+                pageData.artboard.push(data)
             }
-            common.exportAsZip(data)
+            common.exportAsZip(pageData)
         },
         exportAsZip: function(pageData) {
             var marketch = null;
@@ -1804,8 +1882,6 @@ var onRun = function(context) {
                         doc: common.document,
                         pageData: pageData
                     })
-
-                    log(marketch)
 
                     zipResult = common.zipFile(marketch.tmpPath.basePath, exportPath);
                     if (zipResult) {
@@ -1866,4 +1942,3 @@ var onRun = function(context) {
     common.init(context)
     common.export()
 };
-          
