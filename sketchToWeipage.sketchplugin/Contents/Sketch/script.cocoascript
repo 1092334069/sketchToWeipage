@@ -386,13 +386,6 @@ var onRun = function(context) {
         var theLayer = null;
         //画板下的图层迭代器
         var loopLayer = artboard.children().objectEnumerator();
-        //导出选项
-        var exportConfig = {
-          //导出文件名（不包含扩展名）
-          name: '',
-          //导出路径
-          path: obj.artboardPath
-        }
 
         while (theLayer = loopLayer.nextObject()) {
           var layerSize = theLayer.frame().size;
@@ -402,12 +395,30 @@ var onRun = function(context) {
           var layerType = util.toJSString(theLayer.class());
           var layerData = [];
 
-          exportConfig.name = layerId;
-
-          this.exportLayerAsImage(theLayer, exportConfig);
-
           if (layerType == 'MSSymbolInstance') {
-            
+            var symbolIsArtboard = false;
+            var symbolMasterId = util.toJSString(theLayer.symbolMaster().objectID());
+            for (var i = 0; i < this.allArtboards.count(); i++) {
+              var tempId = util.toJSString(this.allArtboards[i].objectID());
+              if (symbolMasterId == tempId) {
+                this.exportLayerAsImage(this.allArtboards[i], {
+                  name: symbolMasterId,
+                  path: obj.artboardPath
+                });
+                symbolIsArtboard = true;
+              }
+            }
+            if (!symbolIsArtboard) {
+              this.exportLayerAsImage(theLayer.symbolMaster(), {
+                name: symbolMasterId,
+                path: obj.artboardPath
+              });
+            }
+          } else {
+            this.exportLayerAsImage(theLayer, {
+              name: layerId,
+              path: obj.artboardPath
+            });
           }
         }
       },
