@@ -1,18 +1,10 @@
 var onRun = function(context) {
-    var util = {
-      /*
-       * 消息提示
-       * obj.title
-       * obj.content
-       */
-      showTips: function(obj){
-        var title = obj.title || 'Marketch';
-        var app = [NSApplication sharedApplication];
-
-        [app displayDialog:obj.content withTitle:title];
-      },
-
-      I18N: (function(){
+    //上下文
+    var ctx = null;
+    //文档对象
+    var doc = null;
+    //多语言
+    var I18N = (function(){
         var language = [[[NSUserDefaults standardUserDefaults] objectForKey:@'AppleLanguages'] objectAtIndex:0];
         //多语言配置
         var I18N = {
@@ -109,60 +101,7 @@ var onRun = function(context) {
         }else{
           return I18N['zh-cn'];
         }
-      })(),
-
-      /*
-       * NSString to js string
-       * @param {NSString} NSStr 待转换的字符串
-       * @param {boolean} config.encode 是否编码字符串
-       * @param {boolean} config.escapeLine 是否转义字符串中的第一个“-”
-       */
-      toJSString: function(NSStr){
-        var config = arguments.length > 1 ? arguments[1] : null;
-        var str = new String(NSStr).toString();
-
-        if(config && config.escapeLine){
-          str = str.replace(/\\-/g, '-');
-        }
-
-        if(config && config.encode){
-          str = encodeURIComponent(str);
-        }
-        return str;
-      },
-
-      //打包文件
-      zipFile: function(zipFile, destination){
-        var zipTask = [[NSTask alloc] init];
-
-        [zipTask setLaunchPath:@'/usr/bin/ditto'];
-        //zip参数
-        [zipTask setArguments:[NSArray arrayWithArray:['-c', '-k', '-X', '--rsrc', zipFile, destination]]];
-
-        [zipTask launch];
-        [zipTask waitUntilExit];
-
-        if ([zipTask terminationStatus] != 0){
-          //task执行失败
-          return false;
-        }else{
-          //task执行成功
-          return true;
-        }
-      },
-
-      trim: function(str){
-        return str.replace(/(^\s+|\s+$)/g, '');
-      }
-    }
-
-
-    //上下文
-    var ctx = null;
-    //文档对象
-    var doc = null;
-    //多语言
-    var I18N = util.I18N;
+    })()
 
     var Marketch = function(){
       //图层zindex属性（新画板始终从1开始）
@@ -227,8 +166,6 @@ var onRun = function(context) {
 
         this.sketchData.layerGroup = expConfig.pageData.artboard
 
-
-
         var basePath = '';
         var loopVar = null
         var loopObj = null;
@@ -242,36 +179,15 @@ var onRun = function(context) {
         //预览需要根据是否导出图层为图片选项决定是否显示导出按钮
         this.sketchData.exportEveryLayer = expConfig.layer;
 
-        //从所有画板中过滤出symbol
         loopObj = doc.pages().objectEnumerator();
+
         while(loopVar = loopObj.nextObject()){
           var artloops = loopVar.artboards().objectEnumerator();
-          while(artboard = artloops.nextObject()){
-            // 不导出前缀为 - 且不为 symbol 的图层
-            if(artboard.className() == 'MSSymbolMaster'){
-              this.allArtboards.addObject(artboard)
-            }
-          }
-        }
-
-        loopObj = doc.pages().objectEnumerator();
-
-        while(loopVar = loopObj.nextObject()){
-          // 不导出以“-”开头的页面
-          if(!/^-{1}[^-]*?.*$/.test(loopVar.name())){
-            var artloops = loopVar.artboards().objectEnumerator();
             while(artboard = artloops.nextObject()){
-              if(artboard.className() == 'MSArtboardGroup' && !/^-{1}[^-]*?.*$/.test(artboard.name())){
-                this.allArtboards.addObject(artboard)
-              }
+                if (this.toJSString(artboard.objectID()) == '787F49B2-8194-49D5-8E59-ECB84FE4E7DB') {
+                  this.allArtboards.addObject(artboard)
+                }
             }
-          }
-        }
-
-        //画板不存在
-        if(this.allArtboards.count() == 0){
-          util.showTips({content:I18N.NOARTBOARD});
-          return false;
         }
 
         //处理画板
@@ -316,7 +232,7 @@ var onRun = function(context) {
         //sketch所有文件数据
         var sketchData = this.sketchData;
         //当前页面Id
-        var activePageId = util.toJSString(doc.currentPage().objectID());
+        var activePageId = this.toJSString(doc.currentPage().objectID());
         var theArtboard;
         var loopArtboard = this.allArtboards.objectEnumerator();
 
@@ -325,11 +241,11 @@ var onRun = function(context) {
           //画板数据
           var artboardData = {};
           //画板id
-          var artboardId = util.toJSString(theArtboard.objectID());
+          var artboardId = this.toJSString(theArtboard.objectID());
           //画板所在页面
           var theArtPage = theArtboard.parentGroup();
           //待处理的画板所在页面id
-          var theArtPageId = util.toJSString(theArtPage.objectID());
+          var theArtPageId = this.toJSString(theArtPage.objectID());
           //画板目录
           var artboardPath = NSString.stringWithFormat(@'%@/%@', this.tmpPath.basePath, artboardId);
           //画板中的切片保存路径
@@ -348,7 +264,7 @@ var onRun = function(context) {
               //页面唯一id
               pageId: theArtPageId,
               //页面名
-              name: util.toJSString(theArtPage.name(), {encode: true, escapeLine:true}),
+              name: this.toJSString(theArtPage.name(), {encode: true, escapeLine:true}),
               //页面下画板id列表（保证显示的顺序）
               artboardId: []
             }
@@ -366,7 +282,7 @@ var onRun = function(context) {
           this.artboardZIndex = 0;
 
           //处理画板&&图层数据
-          this.getArtboardData({
+          this.exportArtboard({
             artboard: theArtboard,
             artboardPath: artboardPath
           });
@@ -377,50 +293,75 @@ var onRun = function(context) {
       },
 
       /**
-       * 处理画板&&图层数据
+       * 处理画板
        * @param obj.artboard 画板
        * @return obj.artboardPath 画板保存路径
        */
-      getArtboardData: function(obj){
-        var artboard = obj.artboard;
-        var theLayer = null;
-        //画板下的图层迭代器
-        var loopLayer = artboard.children().objectEnumerator();
-
-        while (theLayer = loopLayer.nextObject()) {
-          var layerSize = theLayer.frame().size;
-          var layerId = util.toJSString(theLayer.objectID());
-          var parentGroupId = util.toJSString(theLayer.parentGroup().objectID());
-          var layerName = util.toJSString(theLayer.name());
-          var layerType = util.toJSString(theLayer.class());
-          var layerData = [];
-
-          if (layerType == 'MSSymbolInstance') {
-            var symbolIsArtboard = false;
-            var symbolMasterId = util.toJSString(theLayer.symbolMaster().objectID());
-            for (var i = 0; i < this.allArtboards.count(); i++) {
-              var tempId = util.toJSString(this.allArtboards[i].objectID());
-              if (symbolMasterId == tempId) {
-                this.exportLayerAsImage(this.allArtboards[i], {
-                  name: symbolMasterId,
-                  path: obj.artboardPath
-                });
-                symbolIsArtboard = true;
-              }
-            }
-            if (!symbolIsArtboard) {
-              this.exportLayerAsImage(theLayer.symbolMaster(), {
-                name: symbolMasterId,
-                path: obj.artboardPath
-              });
-            }
-          } else {
-            this.exportLayerAsImage(theLayer, {
-              name: layerId,
-              path: obj.artboardPath
-            });
+      exportArtboard: function(obj){
+          var artboard = obj.artboard;
+          var theLayer = null;
+          var loopLayer = artboard.children().objectEnumerator();
+          while (theLayer = loopLayer.nextObject()) {
+              this.exportLayer(theLayer, obj.artboardPath)
           }
-        }
+      },
+
+      /*
+       * 处理图层
+       * layer 图层
+       * artboardPath 画板地址
+       */
+      exportLayer: function(layer, artboardPath, layerId) {
+          var layerStates = common.getStates(layer);
+          if (!common.isExportable(layer) ||
+              !layerStates.isVisible ||
+              (layerStates.isLocked && !common.is(layer, MSSliceLayer)) ||
+              layerStates.isEmpty ||
+              layerStates.hasSlice ||
+              layerStates.isMeasure ||
+              layerStates.isShapeGroup) {
+              return
+          }
+
+          var layerType = common.is(layer, MSTextLayer) ? "text" :
+                common.is(layer, MSSymbolInstance) ? "symbol" :
+                common.is(layer, MSSliceLayer) || common.hasExportSizes(layer)? "slice":
+                "shape";
+
+          var name = this.toJSString(layer.objectID());
+          if (layerType == 'symbol') {
+              name = this.toJSString(layer.symbolMaster().objectID()); 
+          }
+
+          this.exportLayerAsImage(layer, {
+              name: name,
+              path: artboardPath
+          });
+
+          if (layerType == 'symbol') {
+              this.exportSymbol(layer, artboardPath)
+          }
+      },
+
+      /*
+       * 导出符号图层
+       * layer 图层
+       * artboardPath 画板地址
+       */
+      exportSymbol: function(layer, artboardPath) {
+          if (!common.hasExportSizes(layer.symbolMaster()) && layer.symbolMaster().children().count() > 1) {
+              var symbolChildren = layer.symbolMaster().children()
+              for (var j = 0; j < symbolChildren.count(); j++) {
+                  var symbolChildrenId = this.toJSString(symbolChildren[j].objectID())
+                  var allSymbols = doc.documentData().allSymbols()
+                  for (var i = 0; i < allSymbols.count(); i++) {
+                      var symbolId = this.toJSString(allSymbols[i].objectID())
+                      if (symbolChildrenId == symbolId) {
+                          this.exportLayer(symbolChildren[j], artboardPath, symbolChildrenId)
+                      }
+                  }
+              }
+          }
       },
 
       /*
@@ -457,6 +398,20 @@ var onRun = function(context) {
         var dataPath = this.tmpPath.dataPath;
 
         [content writeToFile:dataPath atomically:1 encoding:NSUTF8StringEncoding error:nil];
+      },
+
+      toJSString: function(NSStr){
+        var config = arguments.length > 1 ? arguments[1] : null;
+        var str = new String(NSStr).toString();
+
+        if(config && config.escapeLine){
+          str = str.replace(/\\-/g, '-');
+        }
+
+        if(config && config.encode){
+          str = encodeURIComponent(str);
+        }
+        return str;
       }
     }
 
@@ -716,7 +671,7 @@ var onRun = function(context) {
                                 if (changeSymbol) {
                                    tempSymbolLayer.changeInstanceToSymbol(changeSymbol);
                                 } else {
-                                   tempSymbolLayer = undefined;
+                                   tempSymbolLayer = undefisned;
                                 }
                               }
                           }
@@ -1172,7 +1127,7 @@ var onRun = function(context) {
             }
 
             var layerData = {
-                objectID: common.toJSString( layer.objectID() ),
+                objectID: common.toJSString(layer.objectID()),
                 type: layerType,
                 name: common.toHTMLEncode(common.emojiToEntities(layer.name())),
                 rect: common.rectToJSON(exportLayerRect, artboardRect)
@@ -1250,22 +1205,18 @@ var onRun = function(context) {
                 }
                 pageData.artboards.reverse()
                 data.pages.push(pageData);
-
-                for (var p = 0; p < data.pages.length; p++) {
-                    var artboards = data.pages[p].artboards
-                    for (var a = 0; a < artboards.length; a++) {
-                        var artboard = artboards[a].MSArtboardGroup
-                        var objectID = common.toJSString(artboard.objectID())
-                        common.allCount += artboard.children().count()
-                        common.selectionArtboards.push(artboard)
-                    }
+            }
+            for (var p = 0; p < data.pages.length; p++) {
+                var artboards = data.pages[p].artboards
+                for (var a = 0; a < artboards.length; a++) {
+                    var artboard = artboards[a].MSArtboardGroup
+                    var objectID = common.toJSString(artboard.objectID())
+                    common.allCount += artboard.children().count()
+                    common.selectionArtboards.push(artboard)
                 }
             }
         },
         export: function() {
-            var pageData = {
-              artboard: []
-            }
             common.current = common.artboard || common.page
             common.selectionArtboards = []
             common.allCount = 0
@@ -1276,6 +1227,10 @@ var onRun = function(context) {
             common.sliceCache = {}
             common.savePath = ''
             common.exportPanel()
+            var pageData = {
+              artboard: [],
+              selectionArtboards: common.selectionArtboards
+            }
             for (var i = 0; i < common.selectionArtboards.length; i++) {
                 var artboard = common.selectionArtboards[i]
                 var data = {
@@ -1284,9 +1239,11 @@ var onRun = function(context) {
                     notes: [],
                     layers: []
                 }
-                for (var j = 0; j < artboard.children().length; j++) {
+                if (data.id == '787F49B2-8194-49D5-8E59-ECB84FE4E7DB') {
+                  for (var j = 0; j < artboard.children().length; j++) {
                     var layer = artboard.children()[j]
                     common.getLayer(artboard, layer, data)
+                  }
                 }
                 pageData.artboard.push(data)
             }
@@ -1301,26 +1258,25 @@ var onRun = function(context) {
             var artboardType = 'all';
 
             if (exportPath) {
-                // 延迟1s执行，避免阻塞ui
                 marketch = new Marketch().run({
-                        layer: true,
-                        artboard: artboardType,
-                        saveSource: false,
-                        scale2x: true,
-                        ctx: common.context,
-                        doc: common.document,
-                        pageData: pageData
-                    })
+                    layer: true,
+                    artboard: artboardType,
+                    saveSource: false,
+                    scale2x: true,
+                    ctx: common.context,
+                    doc: common.document,
+                    pageData: pageData
+                })
 
-                    zipResult = common.zipFile(marketch.tmpPath.basePath, exportPath);
-                    if (zipResult) {
-                        common.document.showMessage(I18N.EXPORTSUCCESS);
-                        var zipURL = [NSURL fileURLWithPath: exportPath];
-                        var fileURLs = [NSArray arrayWithArray:[zipURL]];
-                        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:fileURLs];
-                    } else {
-                        common.document.showMessage(I18N.EXPORTFAIL);
-                    }
+                zipResult = common.zipFile(marketch.tmpPath.basePath, exportPath);
+                if (zipResult) {
+                    common.document.showMessage(I18N.EXPORTSUCCESS);
+                    var zipURL = [NSURL fileURLWithPath: exportPath];
+                    var fileURLs = [NSArray arrayWithArray:[zipURL]];
+                    [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:fileURLs];
+                } else {
+                    common.document.showMessage(I18N.EXPORTFAIL);
+                }
             }
         },
         getSavePath: function(){
