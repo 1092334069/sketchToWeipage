@@ -161,10 +161,10 @@ var onRun = function(context) {
        * @return
        */
       run: function(expConfig){
-        ctx = expConfig.ctx
-        doc = expConfig.doc
+        ctx = expConfig.ctx;
+        doc = expConfig.doc;
 
-        this.sketchData.layerGroup = expConfig.pageData.artboard
+        this.sketchData.layerGroup = expConfig.pageData.artboard;
 
         var basePath = '';
         var loopVar = null
@@ -196,98 +196,90 @@ var onRun = function(context) {
 
       //初始化临时目录路径
       initTmpPath: function(){
-        //临时目录
-        var tmpPath = NSTemporaryDirectory();
-        var basePath = [tmpPath stringByAppendingPathComponent: @'com.sketch.cosa'];
-        var tmpFolder = new Date().getTime().toString();
-        var artboardFolder = [NSString stringWithFormat: @'%@/%@', basePath, tmpFolder];
-        var imagePath = '';
-        var dataPath = '';
+          //临时目录
+          var tmpPath = NSTemporaryDirectory();
+          var basePath = [tmpPath stringByAppendingPathComponent: @'com.sketch.cosa'];
+          var tmpFolder = new Date().getTime().toString();
+          var artboardFolder = [NSString stringWithFormat: @'%@/%@', basePath, tmpFolder];
+          var imagePath = '';
+          var dataPath = '';
 
-        //删除主目录（如果存在）
-        var result = [[NSFileManager alloc] removeItemAtPath:basePath error:nil];
-        //重新创建主目录
-        [[NSFileManager alloc] createDirectoryAtPath:basePath withIntermediateDirectories:nil attributes:nil error:nil];
-        //重新创建画板文件夹
-        [[NSFileManager alloc] createDirectoryAtPath:artboardFolder withIntermediateDirectories:nil attributes:nil error:nil];
-        //数据文件路径
-        // dataPath = [artboardFolder stringByAppendingPathComponent: @'data.js'];
-        dataPath = [artboardFolder stringByAppendingPathComponent: @'data.json'];
-        //html文件路径
-        htmlPath = [artboardFolder stringByAppendingPathComponent: @'index.html'];
+          //删除主目录（如果存在）
+          var result = [[NSFileManager alloc] removeItemAtPath:basePath error:nil];
+          //重新创建主目录
+          [[NSFileManager alloc] createDirectoryAtPath:basePath withIntermediateDirectories:nil attributes:nil error:nil];
+          //重新创建画板文件夹
+          [[NSFileManager alloc] createDirectoryAtPath:artboardFolder withIntermediateDirectories:nil attributes:nil error:nil];
+          dataPath = [artboardFolder stringByAppendingPathComponent: @'data.json'];
 
-        this.tmpPath.zipPath = basePath;
-        //基础路径
-        this.tmpPath.basePath = artboardFolder;
-        //数据文件路径
-        this.tmpPath.dataPath = dataPath;
-        //html文件路径
-        this.tmpPath.htmlPath = htmlPath;
+          this.tmpPath.zipPath = basePath;
+          //基础路径
+          this.tmpPath.basePath = artboardFolder;
+          //数据文件路径
+          this.tmpPath.dataPath = dataPath;
       },
 
       //迭代处理画板
       collectArtboard: function(){
-        //sketch所有文件数据
-        var sketchData = this.sketchData;
-        //当前页面Id
-        var activePageId = this.toJSString(doc.currentPage().objectID());
-        var theArtboard;
-        var loopArtboard = this.allArtboards.objectEnumerator();
+          //sketch所有文件数据
+          var sketchData = this.sketchData;
+          //当前页面Id
+          var activePageId = this.toJSString(doc.currentPage().objectID());
+          var theArtboard;
+          var loopArtboard = this.allArtboards.objectEnumerator();
 
-        //遍历所有画板
-        while(theArtboard = loopArtboard.nextObject()) {
-          //画板数据
-          var artboardData = {};
-          //画板id
-          var artboardId = this.toJSString(theArtboard.objectID());
-          //画板所在页面
-          var theArtPage = theArtboard.parentGroup();
-          //待处理的画板所在页面id
-          var theArtPageId = this.toJSString(theArtPage.objectID());
-          //画板目录
-          var artboardPath = NSString.stringWithFormat(@'%@/%@', this.tmpPath.basePath, artboardId);
-          //画板中的切片保存路径
-          var artboardSlicePath = artboardPath.stringByAppendingPathComponent('slice');
+          //遍历所有画板
+          while(theArtboard = loopArtboard.nextObject()) {
+              //画板数据
+              var artboardData = {};
+              //画板id
+              var artboardId = this.toJSString(theArtboard.objectID());
+              //画板所在页面
+              var theArtPage = theArtboard.parentGroup();
+              //待处理的画板所在页面id
+              var theArtPageId = this.toJSString(theArtPage.objectID());
+              //画板目录
+              var artboardPath = NSString.stringWithFormat(@'%@/%@', this.tmpPath.basePath, artboardId);
 
-          //待处理的画板所在页面不是当前页时激活画板所在的页面
-          if(activePageId != theArtPageId){
-            activePageId = theArtPageId;
-            doc.setCurrentPage(theArtboard.parentGroup());
+              //待处理的画板所在页面不是当前页时激活画板所在的页面
+              if (activePageId != theArtPageId) {
+                  activePageId = theArtPageId;
+                  doc.setCurrentPage(theArtboard.parentGroup());
+              }
+
+              //页面信息
+              if (!sketchData.pageData[theArtPageId]) {
+                  //不管用户如何选择都要导出页面数据
+                  sketchData.pageData[theArtPageId] = {
+                      //页面唯一id
+                      pageId: theArtPageId,
+                      //页面名
+                      name: this.toJSString(theArtPage.name(), {encode: true, escapeLine:true}),
+                      //页面下画板id列表（保证显示的顺序）
+                      artboardId: []
+                  }
+                  //保存画板顺序
+                  sketchData.pageOrder.push(theArtPageId);
+              }
+
+              //保存画板id
+              sketchData.pageData[theArtPageId].artboardId.push(artboardId);
+
+              //新建画板文件夹
+              [[NSFileManager defaultManager] createDirectoryAtPath:artboardPath withIntermediateDirectories:nil attributes:nil error:nil];
+
+              //重置zindex
+              this.artboardZIndex = 0;
+
+              //处理画板&&图层数据
+              this.exportArtboard({
+                  artboard: theArtboard,
+                  artboardPath: artboardPath
+              });
           }
 
-          //页面信息
-          if(!sketchData.pageData[theArtPageId]){
-            //不管用户如何选择都要导出页面数据
-            sketchData.pageData[theArtPageId] = {
-              //页面唯一id
-              pageId: theArtPageId,
-              //页面名
-              name: this.toJSString(theArtPage.name(), {encode: true, escapeLine:true}),
-              //页面下画板id列表（保证显示的顺序）
-              artboardId: []
-            }
-            //保存画板顺序
-            sketchData.pageOrder.push(theArtPageId);
-          }
-
-          //保存画板id
-          sketchData.pageData[theArtPageId].artboardId.push(artboardId);
-
-          //新建画板文件夹
-          [[NSFileManager defaultManager] createDirectoryAtPath:artboardPath withIntermediateDirectories:nil attributes:nil error:nil];
-
-          //重置zindex
-          this.artboardZIndex = 0;
-
-          //处理画板&&图层数据
-          this.exportArtboard({
-            artboard: theArtboard,
-            artboardPath: artboardPath
-          });
-        }
-
-        //TODO 处理蒙版
-        this.saveDataJsonFile();
+          //TODO 处理蒙版
+          this.saveDataJsonFile();
       },
 
       /**
@@ -310,21 +302,21 @@ var onRun = function(context) {
        * artboardPath 画板地址
        */
       exportLayer: function(layer, artboardPath, layerId) {
-          var layerStates = common.getStates(layer);
+          var layerStates = common.getStates(layer)
+          var layerType = common.is(layer, MSTextLayer) ? "text" :
+                common.is(layer, MSSymbolInstance) ? "symbol" :
+                common.is(layer, MSSliceLayer) || common.hasExportSizes(layer)? "slice":
+                "shape"
           if (!common.isExportable(layer) ||
               !layerStates.isVisible ||
               (layerStates.isLocked && !common.is(layer, MSSliceLayer)) ||
               layerStates.isEmpty ||
               layerStates.hasSlice ||
               layerStates.isMeasure ||
-              layerStates.isShapeGroup) {
+              layerStates.isShapeGroup ||
+              layerType == 'text') {
               return
           }
-
-          var layerType = common.is(layer, MSTextLayer) ? "text" :
-                common.is(layer, MSSymbolInstance) ? "symbol" :
-                common.is(layer, MSSliceLayer) || common.hasExportSizes(layer)? "slice":
-                "shape";
 
           var name = this.toJSString(layer.objectID());
           if (layerId) {
