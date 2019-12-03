@@ -184,9 +184,7 @@ var onRun = function(context) {
         while(loopVar = loopObj.nextObject()){
           var artloops = loopVar.artboards().objectEnumerator();
             while(artboard = artloops.nextObject()){
-                if (this.toJSString(artboard.objectID()) == '787F49B2-8194-49D5-8E59-ECB84FE4E7DB') {
-                  this.allArtboards.addObject(artboard)
-                }
+                this.allArtboards.addObject(artboard)
             }
         }
 
@@ -329,6 +327,9 @@ var onRun = function(context) {
                 "shape";
 
           var name = this.toJSString(layer.objectID());
+          if (layerId) {
+              name = layerId
+          }
           if (layerType == 'symbol') {
               name = this.toJSString(layer.symbolMaster().objectID()); 
           }
@@ -350,16 +351,37 @@ var onRun = function(context) {
        */
       exportSymbol: function(layer, artboardPath) {
           if (!common.hasExportSizes(layer.symbolMaster()) && layer.symbolMaster().children().count() > 1) {
-              var symbolChildren = layer.symbolMaster().children()
-              for (var j = 0; j < symbolChildren.count(); j++) {
-                  var symbolChildrenId = this.toJSString(symbolChildren[j].objectID())
-                  var allSymbols = doc.documentData().allSymbols()
-                  for (var i = 0; i < allSymbols.count(); i++) {
-                      var symbolId = this.toJSString(allSymbols[i].objectID())
-                      if (symbolChildrenId == symbolId) {
-                          this.exportLayer(symbolChildren[j], artboardPath, symbolChildrenId)
+              if (!common.hasExportSizes(layer.symbolMaster()) && layer.symbolMaster().children().count() > 1) {
+                  var symbolRect = common.getRect(layer),
+                      symbolChildren = layer.symbolMaster().children(),
+                      tempSymbol = layer.duplicate(),
+                      tempGroup = tempSymbol.detachStylesAndReplaceWithGroupRecursively(false);
+
+                  var tempSymbolLayers = tempGroup.children().objectEnumerator(),
+                        overrides = layer.overrides(),
+                        idx = 0;
+
+                  overrides = (overrides)? overrides.objectForKey(0): undefined;
+
+                  while (tempSymbolLayer = tempSymbolLayers.nextObject()) {
+                      if (common.is(tempSymbolLayer, MSSymbolInstance)) {
+                          var symbolMasterObjectID = common.toJSString(symbolChildren[idx].objectID());
+                          if (overrides && overrides[symbolMasterObjectID] && !!overrides[symbolMasterObjectID].symbolID) {
+                              var changeSymbol = self.find({key: "(symbolID != NULL) && (symbolID == %@)", match: common.toJSString(overrides[symbolMasterObjectID].symbolID)}, common.document.documentData().allSymbols());
+                              if (changeSymbol) {
+                                  tempSymbolLayer.changeInstanceToSymbol(changeSymbol);
+                              } else {
+                                  tempSymbolLayer = undefisned;
+                              }
+                          }
                       }
+                      if (tempSymbolLayer) {
+                          var layerId = common.toJSString(symbolChildren[idx].objectID());
+                          this.exportLayer(tempSymbolLayer, artboardPath, layerId)
+                      }
+                      idx++
                   }
+                  common.removeLayer(tempGroup);
               }
           }
       },
@@ -673,21 +695,21 @@ var onRun = function(context) {
                                 } else {
                                    tempSymbolLayer = undefisned;
                                 }
-                              }
-                          }
-                          if (tempSymbolLayer) {
+                            }
+                        }
+                        if (tempSymbolLayer) {
                             common.getLayer(
                                 artboard,
                                 tempSymbolLayer,
                                 data,
                                 symbolChildren[idx]
                             );
-                          }
-                          idx++
-                      }
-                      common.removeLayer(tempGroup);
-                  }
-              }
+                        }
+                        idx++
+                    }
+                    common.removeLayer(tempGroup);
+                }
+            }
         },
 
         getText: function(artboard, layer, layerData, data){
@@ -1239,11 +1261,9 @@ var onRun = function(context) {
                     notes: [],
                     layers: []
                 }
-                if (data.id == '787F49B2-8194-49D5-8E59-ECB84FE4E7DB') {
-                  for (var j = 0; j < artboard.children().length; j++) {
-                    var layer = artboard.children()[j]
-                    common.getLayer(artboard, layer, data)
-                  }
+                for (var j = 0; j < artboard.children().length; j++) {
+                  var layer = artboard.children()[j]
+                  common.getLayer(artboard, layer, data)
                 }
                 pageData.artboard.push(data)
             }
