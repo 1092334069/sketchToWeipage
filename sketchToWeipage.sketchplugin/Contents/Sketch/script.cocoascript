@@ -239,7 +239,7 @@ var onRun = function(context) {
               //待处理的画板所在页面id
               var theArtPageId = this.toJSString(theArtPage.objectID());
               //画板目录
-              var artboardPath = NSString.stringWithFormat(@'%@/%@', this.tmpPath.basePath, artboardId);
+              var artboardPath = NSString.stringWithFormat(@'%@/%@', this.tmpPath.basePath, 'pic');
 
               //待处理的画板所在页面不是当前页时激活画板所在的页面
               if (activePageId != theArtPageId) {
