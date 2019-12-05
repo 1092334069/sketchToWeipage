@@ -853,6 +853,10 @@ var onRun = function(context) {
             }
         },
 
+        colorRgba: function(color) {
+            return `rgba(${Math.round(color.red() * 255)},${Math.round(color.green() * 255)},${Math.round(color.blue() * 255)},${color.alpha()})`
+        },
+
         gradientToJSON: function(gradient) {
             var stopsData = [],
                 stop, stopIter = gradient.stops().objectEnumerator();
