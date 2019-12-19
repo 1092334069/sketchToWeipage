@@ -313,8 +313,7 @@ var onRun = function(context) {
               layerStates.isEmpty ||
               layerStates.hasSlice ||
               layerStates.isMeasure ||
-              layerStates.isShapeGroup ||
-              layerType == 'text') {
+              layerStates.isShapeGroup) {
               return
           }
 
@@ -400,7 +399,7 @@ var onRun = function(context) {
         slice = [[MSExportRequest exportRequestsFromExportableLayer:layer] firstObject];
         slice.page = doc.currentPage();
         slice.format = 'png';
-        slice.scale = 2;
+        slice.scale = 1;
 
         [doc saveArtboardOrSlice:slice toFile:exportName +'.png'];
       },
@@ -1254,6 +1253,7 @@ var onRun = function(context) {
                 var data = {
                     'id': common.toJSString(artboard.objectID()),
                     name: common.toJSString(artboard.name()),
+                    width: common.toJSString(artboard.absoluteInfluenceRect().size.width),
                     notes: [],
                     layers: []
                 }
